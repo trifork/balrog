@@ -1,4 +1,16 @@
 import { createServer } from "node:http";
+import * as fs from "fs";
+import * as path from "node:path";
+
+const logDirIndex = process.argv.indexOf("--log-dir", 2);
+if (logDirIndex !== -1 && !process.argv[logDirIndex + 1]) {
+  throw new Error("--log-dir requires a path");
+}
+
+const logDir = path.resolve(
+  logDirIndex === -1 ? process.cwd() : process.argv[logDirIndex + 1],
+);
+fs.mkdirSync(logDir, { recursive: true });
 
 const server = createServer(async (request, response) => {
   const reply = (status: number, body: object) => {
@@ -33,7 +45,22 @@ const server = createServer(async (request, response) => {
       return;
     }
 
-    console.log(JSON.stringify(event));
+    const fields = event as Record<string, unknown>;
+    const pluginID = fields["pluginID"];
+    const sessionID = fields["sessionID"];
+    const identifiers = [pluginID, sessionID].filter((id) => !!id);
+    const filename = path.join(
+      logDir,
+      `balrog-log-${identifiers.join("-")}.jsonl`,
+    );
+    if (!fs.existsSync(filename)) {
+      console.log(`Created session log ${filename}`);
+    }
+    const line = JSON.stringify(event);
+    fs.appendFileSync(filename, line);
+    console.log(
+      `Wrote ${(line.length / 1024).toPrecision(1)}K ${fields["tag"]} event to ${filename}`,
+    );
     reply(200, { ok: true });
   } catch {
     reply(400, { error: "Invalid JSON or incomplete request" });
