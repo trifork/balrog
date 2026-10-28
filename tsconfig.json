@@ -9,9 +9,8 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "composite": true,
     "types": ["node"]
   },
   "references": [],
-  "include": ["./plugin/*.ts"]
+  "include": ["plugin/**/*.ts", "server/**/*.ts", "tests/**/*.ts"]
 }

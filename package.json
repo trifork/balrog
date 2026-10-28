@@ -4,9 +4,12 @@
   "type": "module",
   "packageManager": "npm@10.0.0",
   "scripts": {
-    "serve": "npx tsx server/index.ts"
+    "serve": "tsx server/index.ts",
+    "typecheck": "tsc --noEmit --incremental false",
+    "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
+    "@opencode/plugin": "2.2.0",
     "@opencode-ai/plugin": "^1.19.0",
     "@opencode-ai/sdk": "^1.19.0"
   },
