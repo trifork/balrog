@@ -55,7 +55,7 @@ const server = createServer(async (request, response) => {
       console.log(`Created session log ${basename}`);
     }
     const line = JSON.stringify(event);
-    fs.appendFileSync(filename, line);
+    fs.appendFileSync(filename, `${line}\n`);
     console.log(
       `Wrote ${(line.length / 1024).toFixed(1)}K ${fields["tag"]} event to ${basename}`,
     );

@@ -131,56 +131,87 @@ test("V1 preserves its hooks, payloads, and legacy entrypoint", async (t) => {
   assert.ok(records.every((record) => record.pluginID === records[0].pluginID));
 });
 
-test("V2 registers native tool and prompt hooks without modifying events", async (t) => {
+test("V2 subscribes to native events and records them without modifying them", async (t) => {
   const records = captureLogs(t);
-  // The host normally supplies the context and owns registration disposal.
-  const hooks = new Map<string, (event: object) => Promise<void>>();
+  const events = [
+    {
+      type: "session.tool.called",
+      data: {
+        sessionID: "session-1", tool: "read", id: "call-1",
+        messageID: "message-1", agent: "build", input: { filePath: "README.md" },
+      },
+    },
+    {
+      type: "session.tool.success",
+      data: {
+        sessionID: "session-1", tool: "read", id: "call-1",
+        status: "completed", result: { content: "contents" },
+      },
+    },
+    {
+      type: "session.tool.failed",
+      data: {
+        sessionID: "session-1", tool: "read", id: "call-1",
+        status: "error", error: { message: "Read failed" },
+      },
+    },
+    {
+      type: "session.text.started",
+      data: {
+        sessionID: "session-1", messageID: "message-2",
+        text: "hello", role: "user",
+      },
+    },
+  ];
+  const snapshots = structuredClone(events);
+  const subscribedTypes = [
+    "permission.asked",
+    "permission.replied",
+    "session.created",
+    "session.execution.failed",
+    "session.execution.started",
+    "session.execution.succeeded",
+    "session.renamed",
+    "session.text.ended",
+    "session.text.started",
+    "session.tool.called",
+    "session.tool.failed",
+    "session.tool.success",
+  ];
+  let subscriptionSignal: AbortSignal | undefined;
   const context = {
     app: { version: "2.2.0" },
     location: { directory: "C:/project", project: { id: "project-1" } },
-    tool: {
-      async hook(name: string, callback: (event: object) => Promise<void>) {
-        hooks.set(`tool.${name}`, callback);
-        return { async dispose() {} };
-      },
-    },
-    session: {
-      async hook(name: string, callback: (event: object) => Promise<void>) {
-        hooks.set(`session.${name}`, callback);
-        return { async dispose() {} };
+    event: {
+      async *subscribe(options: { types: string[]; signal: AbortSignal }) {
+        assert.deepEqual(options.types, subscribedTypes);
+        subscriptionSignal = options.signal;
+        for (const event of events) {
+          yield event;
+        }
       },
     },
   } as unknown as Plugin.Context;
 
   assert.equal(v2.id, "opencode-balrog");
-  await v2.setup(context);
-  assert.deepEqual([...hooks.keys()], [
-    "tool.execute.before", "tool.execute.after", "session.prompt",
-  ]);
+  const dispose = await v2.setup(context);
+  if (typeof dispose !== "function") {
+    throw new Error("Expected V2 setup to return a cleanup function");
+  }
+  await dispose();
 
-  const before = {
-    sessionID: "session-1", tool: "read", id: "call-1",
-    messageID: "message-1", agent: "build", input: { filePath: "README.md" },
-  };
-  const completed = { ...before, status: "completed", result: { content: "contents" } };
-  const failed = { ...before, status: "error", error: { message: "Read failed" } };
-  const prompt = {
-    sessionID: "session-1", messageID: "message-2",
-    prompt: { text: "hello" }, delivery: "steer",
-  };
-  const snapshots = structuredClone([before, completed, failed, prompt]);
-  await hooks.get("tool.execute.before")!(before);
-  await hooks.get("tool.execute.after")!(completed);
-  await hooks.get("tool.execute.after")!(failed);
-  await hooks.get("session.prompt")!(prompt);
-
-  assert.deepEqual([before, completed, failed, prompt], snapshots);
+  assert.ok(subscriptionSignal);
+  assert.equal(subscriptionSignal.aborted, true);
+  assert.deepEqual(events, snapshots);
   assert.deepEqual(records[0].initialize, {
     context: { location: context.location, version: "2.2.0" },
   });
   assert.deepEqual(records.slice(1).map((record) => record[record.tag]),
     snapshots.map((event) => ({ event })));
-  assert.equal(records[4].tag, "session.prompt");
+  assert.deepEqual(records.slice(1).map((record) => record.tag),
+    events.map((event) => event.type));
+  assert.deepEqual(records.slice(1).map((record) => record.sessionID),
+    events.map((event) => event.data.sessionID));
   assert.ok(records.every((record) => record.apiVersion === "v2"));
   assert.ok(records.every((record) => record.pluginID === records[0].pluginID));
 });

@@ -12,14 +12,38 @@ export default Plugin.define({
       },
     });
 
-    await ctx.tool.hook("execute.before", (event) =>
-      recorder.record("tool.execute.before", event.sessionID, { event }),
-    );
-    await ctx.tool.hook("execute.after", (event) =>
-      recorder.record("tool.execute.after", event.sessionID, { event }),
-    );
-    await ctx.session.hook("prompt", (event) =>
-      recorder.record("session.prompt", event.sessionID, { event }),
-    );
+    const controller = new AbortController();
+    const consume = (async () => {
+      try {
+        for await (const event of ctx.event.subscribe({
+          types: [
+            "permission.asked",
+            "permission.replied",
+            "session.created",
+            "session.execution.failed",
+            "session.execution.started",
+            "session.execution.succeeded",
+            "session.renamed",
+            "session.text.ended",
+            "session.text.started",
+            "session.tool.called",
+            "session.tool.failed",
+            "session.tool.success",
+          ],
+          signal: controller.signal,
+        })) {
+          await recorder.record(event.type, event.data.sessionID, {
+            event,
+          });
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) throw error;
+      }
+    })();
+
+    return async () => {
+      controller.abort();
+      await consume;
+    };
   },
 });
