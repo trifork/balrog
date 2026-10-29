@@ -16,9 +16,7 @@ fs.mkdirSync(logDir, { recursive: true });
 
 const receiver = new LogReceiver();
 receiver.subscribe((event) => {
-  const pluginID = event["pluginID"];
-  const sessionID = event["sessionID"];
-  const identifiers = [pluginID, sessionID].filter((id) => !!id);
+  const identifiers = [event.pluginID, event.sessionID].filter((id) => !!id);
   const basename = `balrog-${identifiers.join("-")}.jsonl`;
   const filename = path.join(logDir, basename);
   if (!fs.existsSync(filename)) {

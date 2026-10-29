@@ -35,9 +35,7 @@ export default Plugin.define({
           ],
           signal: controller.signal,
         })) {
-          await recorder.record(event.type, event.data.sessionID, {
-            event,
-          });
+          await recorder.record(event.type, event.data.sessionID, event);
         }
       } catch (error) {
         if (!controller.signal.aborted) throw error;

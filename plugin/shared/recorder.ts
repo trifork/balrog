@@ -22,10 +22,10 @@ export class Recorder {
   async record(
     tag: string,
     sessionID: string | null,
-    fields: object,
+    event: object,
   ): Promise<void> {
     const body = JSON.stringify({
-      [tag]: fields,
+      [tag]: event,
       tag,
       sessionID,
       pluginID: this.pluginID,

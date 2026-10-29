@@ -1,6 +1,41 @@
 import { createServer, type Server } from "node:http";
+import type { OpenCodeEvent } from "@opencode/protocol/groups/event";
 
-export type LogEvent = Record<string, unknown>;
+interface LogMetadata {
+  apiVersion: "v2";
+  pluginID: string;
+  sessionID: string | null;
+}
+
+interface LogLocation {
+  directory: string;
+  workspaceID?: string;
+  project: {
+    id: string;
+    directory: string;
+    canonical: string;
+  };
+}
+
+export interface InitPluginEvent extends LogMetadata {
+  tag: "initialize";
+  sessionID: null;
+  initialize: {
+    context: {
+      location: LogLocation;
+      version: string;
+    };
+  };
+}
+
+type OpenCodeEventLog<Event extends OpenCodeEvent = OpenCodeEvent> =
+  Event extends OpenCodeEvent
+    ? LogMetadata & { tag: Event["type"] } & Record<Event["type"], Event>
+    : never;
+
+type EventLogEvent = OpenCodeEventLog;
+
+export type LogEvent = InitPluginEvent | EventLogEvent;
 export type LogEventListener = (event: LogEvent) => void;
 
 /** Receives log events over HTTP and publishes each valid event to subscribers. */
