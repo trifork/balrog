@@ -23,6 +23,27 @@ test("viewer serves a page and streams events without writing log files", async 
   assert.doesNotThrow(() => new Function(pageScript));
   assert.match(pageText, /id="session-tabs"/);
   assert.match(pageText, /All sessions/);
+  assert.match(pageText, /const sessionFromURL =/);
+  assert.match(pageText, /searchParams\.get\('session'\)/);
+  assert.match(pageText, /searchParams\.set\('session', selectedSession\)/);
+  assert.match(pageText, /searchParams\.delete\('session'\)/);
+  assert.match(pageText, /window\.history\.pushState/);
+  assert.match(pageText, /window\.addEventListener\('popstate'/);
+  assert.match(pageText, /if \(meta\) meta\.hidden = Boolean\(selectedSession\)/);
+  assert.match(pageText, /id="collapse-all"/);
+  assert.match(pageText, /Collapse all/);
+  assert.match(pageText, /const setCardCollapsed =/);
+  assert.match(pageText, /className = 'event-collapse'/);
+  assert.match(pageText, /const hasContent = typeof message\.content === 'string'/);
+  assert.match(pageText, /if \(hasContent\) \{/);
+  assert.match(pageText, /querySelectorAll\('article\.has-content'\)/);
+  assert.match(pageText, /article\.collapsed > \.content \{ display: none; \}/);
+  assert.doesNotMatch(pageText, /article\.collapsed > :not\(header\)/);
+  assert.match(pageText, /control\.textContent = collapsed \? '▸' : '▾'/);
+  assert.match(pageText, /heading\.append\(collapse\)/);
+  assert.match(pageText, /heading\.append\(tag, time, meta\)/);
+  assert.match(pageText, /meta\.hidden = Boolean\(selectedSession\)/);
+  assert.match(pageText, /if \(hasContent\) setCardCollapsed\(card, collapseNewEvents\)/);
   assert.match(pageText, /fetch\('\/api\/sessions'\)/);
   assert.doesNotMatch(pageText, /messageContent/);
   assert.match(pageText, /message\.content/);
@@ -32,13 +53,16 @@ test("viewer serves a page and streams events without writing log files", async 
   assert.match(pageText, /const rawEventDetails =/);
   assert.match(pageText, /details\.open = false/);
   assert.match(pageText, /summary\.textContent = 'Raw event'/);
-  assert.match(pageText, /heading\.append\(tag, time, meta\)/);
   assert.match(pageText, /card\.append\(rawEventDetails\(event\)\)/);
   assert.doesNotMatch(pageText, /hiddenFields|humanReadable|isIdentifier/);
   assert.doesNotMatch(pageText, /No readable details/);
   assert.doesNotMatch(pageScript, /existing\.textContent = message\.sessionTitle/);
   assert.match(pageText, /JSON\.stringify\(event, null, 2\)/);
   assert.doesNotMatch(pageText, /message\.sessionTitle \|\| event\.sessionID/);
+
+  const pageWithSession = await fetch(`${origin}/?session=session-viewer`);
+  assert.equal(pageWithSession.status, 200);
+  assert.match(await pageWithSession.text(), /Balrog log events/);
 
   const event = {
     tag: "session.prompt",

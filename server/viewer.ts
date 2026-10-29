@@ -81,9 +81,12 @@ const PAGE = `<!doctype html>
     <style>
       :root { color-scheme: dark; font: 14px/1.5 system-ui, sans-serif; }
       body { margin: 0; background: #101318; color: #e6e8eb; }
-      header { position: sticky; top: 0; padding: 1rem 1.5rem; background: #191e26; border-bottom: 1px solid #303743; }
+      body > header { position: sticky; top: 0; z-index: 1; display: flex; gap: 0.75rem; align-items: center; padding: 1rem 1.5rem; background: #191e26; border-bottom: 1px solid #303743; }
       h1 { display: inline; margin: 0 1rem 0 0; font-size: 1.1rem; }
       #status { color: #aab4c2; }
+      button { border: 1px solid #414b59; border-radius: 4px; background: #242b35; color: #d5dae1; font: inherit; cursor: pointer; }
+      button:hover { background: #303946; color: #fff; }
+      #collapse-all { margin-left: auto; padding: 0.35rem 0.65rem; }
       #session-tabs { display: flex; gap: 0.4rem; overflow-x: auto; padding: 0.65rem 1rem 0; background: #191e26; border-bottom: 1px solid #303743; }
       .session-tab { flex: 0 0 auto; padding: 0.45rem 0.75rem; border: 1px solid transparent; border-radius: 6px 6px 0 0; background: transparent; color: #aab4c2; font: inherit; cursor: pointer; }
       .session-tab:hover { color: #e6e8eb; background: #242b35; }
@@ -92,6 +95,9 @@ const PAGE = `<!doctype html>
       #events { padding: 1rem; }
       article { position: relative; margin: 0 auto 0.75rem; max-width: 1100px; border: 1px solid #303743; border-radius: 6px; overflow: hidden; }
       article header { position: static; display: flex; gap: 1rem; align-items: baseline; padding: 0.45rem 7rem 0.45rem 0.75rem; }
+      article.collapsed > .content { display: none; }
+      .event-collapse { flex: 0 0 auto; width: 1.25rem; margin-right: -0.5rem; padding: 0; border: 0; background: transparent; color: #aab4c2; font-size: 1rem; line-height: 1; }
+      .event-collapse:hover { background: transparent; color: #fff; }
       time, .meta { color: #aab4c2; font-size: 0.85rem; }
       .command { min-width: 0; overflow: hidden; color: #d5dae1; text-overflow: ellipsis; white-space: nowrap; font: 12px/1.35 ui-monospace, monospace; }
       strong { color: #91c8ff; }
@@ -105,11 +111,11 @@ const PAGE = `<!doctype html>
       article > details > summary { position: absolute; top: 0.45rem; right: 0.75rem; padding: 0; white-space: nowrap; }
       article > details > pre { width: 100%; box-sizing: border-box; border-top: 1px solid #303743; }
       #empty { max-width: 1100px; margin: 2rem auto; color: #aab4c2; }
-      @media (max-width: 600px) { header { padding: 0.75rem 1rem; } #events { padding: 0.75rem; } }
+      @media (max-width: 600px) { body > header { padding: 0.75rem 1rem; } #events { padding: 0.75rem; } }
     </style>
   </head>
   <body>
-    <header><h1>Balrog log events</h1><span id="status">Connecting…</span></header>
+    <header><h1>Balrog log events</h1><span id="status">Connecting…</span><button id="collapse-all" type="button">Collapse all</button></header>
     <nav id="session-tabs" aria-label="Sessions" role="tablist">
       <button class="session-tab" type="button" role="tab" data-session-id="" aria-selected="true">All sessions</button>
     </nav>
@@ -118,8 +124,36 @@ const PAGE = `<!doctype html>
       const list = document.querySelector('#events');
       const status = document.querySelector('#status');
       const tabs = document.querySelector('#session-tabs');
+      const collapseAll = document.querySelector('#collapse-all');
       const sessions = new Map();
-      let selectedSession = '';
+      const sessionFromURL = () => new URL(window.location.href).searchParams.get('session') || '';
+      let selectedSession = sessionFromURL();
+      const updateSessionURL = () => {
+        const url = new URL(window.location.href);
+        if (selectedSession) url.searchParams.set('session', selectedSession);
+        else url.searchParams.delete('session');
+        window.history.pushState(null, '', url);
+      };
+      let collapseNewEvents = false;
+      const setCardCollapsed = (card, collapsed) => {
+        card.classList.toggle('collapsed', collapsed);
+        const control = card.querySelector('.event-collapse');
+        control.textContent = collapsed ? '▸' : '▾';
+        control.title = collapsed ? 'Expand event' : 'Collapse event';
+        control.setAttribute('aria-label', control.title);
+        control.setAttribute('aria-expanded', String(!collapsed));
+      };
+      const updateCollapseAll = () => {
+        const cards = [...list.querySelectorAll('article.has-content')];
+        collapseNewEvents = cards.length > 0 && cards.every((card) => card.classList.contains('collapsed'));
+        collapseAll.textContent = collapseNewEvents ? 'Expand all' : 'Collapse all';
+      };
+      collapseAll.addEventListener('click', () => {
+        const cards = [...list.querySelectorAll('article.has-content')];
+        const shouldCollapse = cards.some((card) => !card.classList.contains('collapsed'));
+        for (const card of cards) setCardCollapsed(card, shouldCollapse);
+        updateCollapseAll();
+      });
       const renderTabs = () => {
         const all = tabs.querySelector('[data-session-id=""]');
         tabs.replaceChildren(all);
@@ -140,6 +174,8 @@ const PAGE = `<!doctype html>
         }
         for (const card of list.querySelectorAll('article')) {
           card.hidden = Boolean(selectedSession && card.dataset.sessionId !== selectedSession);
+          const meta = card.querySelector('.meta');
+          if (meta) meta.hidden = Boolean(selectedSession);
         }
       };
       const upsertSession = (session) => {
@@ -150,7 +186,13 @@ const PAGE = `<!doctype html>
       tabs.addEventListener('click', (event) => {
         const tab = event.target.closest('[data-session-id]');
         if (!tab) return;
+        if (selectedSession === tab.dataset.sessionId) return;
         selectedSession = tab.dataset.sessionId;
+        updateSessionURL();
+        renderTabs();
+      });
+      window.addEventListener('popstate', () => {
+        selectedSession = sessionFromURL();
         renderTabs();
       });
       fetch('/api/sessions')
@@ -176,6 +218,8 @@ const PAGE = `<!doctype html>
         upsertSession(message.session);
         document.querySelector('#empty')?.remove();
         const card = document.createElement('article');
+        const hasContent = typeof message.content === 'string';
+        card.classList.toggle('has-content', hasContent);
         card.dataset.sessionId = message.session?.sessionID || event.sessionID || '';
         const heading = document.createElement('header');
         const tag = document.createElement('strong');
@@ -186,6 +230,17 @@ const PAGE = `<!doctype html>
         meta.className = 'meta';
         meta.dataset.sessionId = message.session?.sessionID || event.sessionID || '';
         meta.textContent = message.sessionTitle || '';
+        meta.hidden = Boolean(selectedSession);
+        if (hasContent) {
+          const collapse = document.createElement('button');
+          collapse.className = 'event-collapse';
+          collapse.type = 'button';
+          collapse.addEventListener('click', () => {
+            setCardCollapsed(card, !card.classList.contains('collapsed'));
+            updateCollapseAll();
+          });
+          heading.append(collapse);
+        }
         heading.append(tag, time, meta);
         if (typeof message.command === 'string') {
           const command = document.createElement('code');
@@ -195,7 +250,7 @@ const PAGE = `<!doctype html>
           heading.append(command);
         }
         card.append(heading);
-        if (typeof message.content === 'string') {
+        if (hasContent) {
           const body = document.createElement('div');
           body.className = 'content';
           if (String(event.tag ?? '').startsWith('session.tool.')) {
@@ -205,8 +260,10 @@ const PAGE = `<!doctype html>
           card.append(body);
         }
         card.append(rawEventDetails(event));
+        if (hasContent) setCardCollapsed(card, collapseNewEvents);
         list.prepend(card);
         card.hidden = Boolean(selectedSession && card.dataset.sessionId !== selectedSession);
+        updateCollapseAll();
       };
     </script>
   </body>
@@ -220,7 +277,10 @@ export class LogViewer {
 
   constructor(private readonly analyzer = new SessionAnalyzer()) {
     this.server = createServer((request, response) => {
-      if (request.method === "GET" && request.url === "/") {
+      if (
+        request.method === "GET" &&
+        (request.url === "/" || request.url?.startsWith("/?"))
+      ) {
         response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         response.end(PAGE);
         return;
