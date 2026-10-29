@@ -10,6 +10,7 @@ plugin/
   v1/index.ts          OpenCode V1 hooks
   v2/index.ts          OpenCode V2 hooks
 server/record.ts      Log recorder for both versions
+server/view.ts        Live log event webpage
 ```
 
 ## Install on Windows
@@ -179,6 +180,47 @@ to disable receiver delivery.
 Logs include prompt text, tool arguments, and tool results, which may contain
 sensitive data. Treat these files accordingly and do not commit them.
 
+## View events live
+
+Run the viewer instead of the recorder to receive events on the same
+`http://localhost:5001/log` endpoint while displaying them in a browser:
+
+```sh
+npm run view
+```
+
+The event receiver listens on port 5001, and the web page is served separately
+at <http://localhost:5002>. Open the page before or after starting OpenCode; it
+shows incoming events and events already received during this viewer process. To
+change the web page port, use `npm run view -- --port 8080`. By default the
+viewer retains events in memory and does not write them to files. Events can
+include prompt text, tool arguments, and tool results, so the receiver and page
+bind to localhost by default.
+
+The viewer also exposes the analyzer's session summaries as JSON at
+`http://localhost:5002/api/sessions` and an individual session at
+`http://localhost:5002/api/sessions/<sessionID>`. `SessionAnalyzer` is available
+from `server/analyzer.ts`; call `process(event)` for each log event, then use
+`getSessionTitle(sessionID)`, `getSession(sessionID)`, or `getSessions()` to
+query its in-memory state. Session rename events update the remembered title.
+
+To persist events in a SQLite database and replay all saved events on startup,
+pass a database filename to the viewer:
+
+```sh
+npm run view -- --db ./logs/balrog.sqlite
+```
+
+The viewer creates the database and parent directory if needed. If the database
+already exists, saved events are loaded in insertion order before the receiver
+starts accepting new events. Each row stores `timestamp` (Unix milliseconds),
+`plugin_id`, `event_type`, `session_id`, and the full `event_json`. The timestamp
+uses the source event time when present, otherwise the time the viewer records
+it. Existing rows are not backfilled; their new metadata columns remain `NULL`.
+The database is append-only; without `--db`, the viewer remains in-memory only.
+This uses Node's built-in `node:sqlite` module, available without an experimental
+flag in Node.js 22.13 and later.
+
 ## Traced activity
 
 Every record includes `tag`, `sessionID`, `pluginID` (per plugin instance), and
@@ -210,6 +252,6 @@ npm run typecheck
 npm test
 ```
 
-Tests exercise the recorder and both entrypoints with mocked OpenCode contexts.
-Also validate loading and real tool/prompt activity in each target OpenCode
-release before distributing the plugin.
+Tests exercise the recorder, live viewer, and both entrypoints with mocked
+OpenCode contexts. Also validate loading and real tool/prompt activity in each
+target OpenCode release before distributing the plugin.

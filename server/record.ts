@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
+import { SessionAnalyzer } from "./analyzer.js";
 import { LogReceiver } from "./log-receiver.js";
 
 const { values } = parseArgs({
@@ -15,6 +16,8 @@ const logDir = path.resolve(values.log ?? process.cwd());
 fs.mkdirSync(logDir, { recursive: true });
 
 const receiver = new LogReceiver();
+const analyzer = new SessionAnalyzer();
+receiver.subscribe((event) => analyzer.process(event));
 receiver.subscribe((event) => {
   const identifiers = [event.pluginID, event.sessionID].filter((id) => !!id);
   const basename = `balrog-${identifiers.join("-")}.jsonl`;

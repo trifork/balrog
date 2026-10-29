@@ -5,6 +5,8 @@
   "packageManager": "npm@10.0.0",
   "scripts": {
     "record": "tsx server/record.ts",
+    "view": "tsx server/view.ts",
+    "view-dev": "tsx watch server/view.ts",
     "typecheck": "tsc --noEmit --incremental false",
     "test": "tsx --test tests/*.test.ts"
   },
