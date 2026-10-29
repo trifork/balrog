@@ -1,7 +1,8 @@
 # OpenCode tracing plugin
 
 Balrog records OpenCode activity through separate V1 and V2 implementations.
-Both use the same recorder and HTTP receiver; there is no runtime version detection.
+Both use the same recorder and HTTP receiver; there is no runtime version
+detection.
 
 ```text
 plugin/
@@ -20,9 +21,10 @@ Set-Location C:\code\hackerdays\balrog
 npm ci
 ```
 
-Check your OpenCode version with `opencode --version` and select **one** entrypoint
-below. Replace the checkout path if necessary. No symlink or administrator access
-is needed. Keep the whole checkout in place: the entrypoints import the shared recorder.
+Check your OpenCode version with `opencode --version` and select **one**
+entrypoint below. Replace the checkout path if necessary. No symlink or
+administrator access is needed. Keep the whole checkout in place: the
+entrypoints import the shared recorder.
 
 Merge the relevant settings into your global
 `$HOME\.config\opencode\opencode.jsonc` (normally
@@ -40,14 +42,14 @@ Use the V1 file entrypoint with the singular `plugin` key:
 }
 ```
 
-The original `plugin/opencode-balrog.ts` path remains a V1 compatibility entrypoint.
-Remove any old auto-discovered copy or symlink before adding the configuration
-above, so the plugin does not load twice.
+The original `plugin/opencode-balrog.ts` path remains a V1 compatibility
+entrypoint. Remove any old auto-discovered copy or symlink before adding the
+configuration above, so the plugin does not load twice.
 
 ### OpenCode V2
 
-Use the V2 **directory** with the plural `plugins` key. V2 skips configured paths
-to individual files.
+Use the V2 **directory** with the plural `plugins` key. V2 skips configured
+paths to individual files.
 
 ```jsonc
 {
@@ -60,8 +62,9 @@ For a project config in this repository, `"./plugin/v2"` also works. Relative
 paths resolve from the config file. Config changes reload automatically in V2;
 use `/reload` to force a reload if needed.
 
-The V2 implementation targets the `@opencode/plugin` 2.2.0 API. The V1 implementation
-uses the `@opencode-ai/plugin` 1.19.x hook API and does not import the V2 SDK at runtime.
+The V2 implementation targets the `@opencode/plugin` 2.2.0 API. The V1
+implementation uses the `@opencode-ai/plugin` 1.19.x hook API and does not
+import the V2 SDK at runtime.
 
 ## Install on Linux
 
@@ -93,7 +96,8 @@ Use the V1 file URL with the singular `plugin` key:
 }
 ```
 
-Remove any old auto-discovered copy or symlink to avoid loading the plugin twice.
+Remove any old auto-discovered copy or symlink to avoid loading the plugin
+twice.
 
 ### OpenCode V2
 
@@ -108,7 +112,27 @@ Use the V2 directory with the plural `plugins` key:
 
 Use your actual absolute path in these JSON examples, not shell expressions such
 as `$HOME`. For a project config in this repository, `"./plugin/v2"` also works.
-V2 reloads config changes automatically; use `/reload` to force a reload if needed.
+V2 reloads config changes automatically; use `/reload` to force a reload if
+needed.
+
+To specify explicitly the endpoint to forward log entries to you can specify the
+`logEndpoint` option:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": [
+    {
+      "package": "/home/user/code/balrog/plugin/v2",
+      "options": {
+        "logEndpoint": "http://localhost:5001/log",
+        "logPath": "balrog.jsonl"
+      }
+    }
+  ]
+}
+```
+
 The API versions and tracing differences are the same on Windows and Linux.
 
 ## Run the receiver
@@ -130,8 +154,8 @@ npm run serve
 ```
 
 The receiver listens on `http://localhost:5001/log` and writes
-`balrog-log-<pluginID>[-<sessionID>].jsonl` files in its working directory. To choose
-another directory:
+`balrog-log-<pluginID>[-<sessionID>].jsonl` files in its working directory. To
+choose another directory:
 
 **Windows (PowerShell):**
 
@@ -146,9 +170,11 @@ npm run serve -- --log-dir "$HOME/logs/balrog"
 ```
 
 Start the receiver before loading the plugin to capture initialization there.
-When the receiver returns an error, cannot be reached, or times out after two
-seconds, the recorder appends a JSON line to `balrog.json` in the OpenCode server
-process's working directory instead. Fallback events are not replayed to the receiver.
+The optional `logPath` plugin option appends every record as a JSON line to that
+file, whether or not delivery to the receiver succeeds. If `logPath` is unset,
+receiver errors or timeouts do not create a local log file. The optional
+`logEndpoint` defaults to `http://localhost:5001/log`; set it to an empty string
+to disable receiver delivery.
 
 Logs include prompt text, tool arguments, and tool results, which may contain
 sensitive data. Treat these files accordingly and do not commit them.
@@ -166,12 +192,12 @@ Every record includes `tag`, `sessionID`, `pluginID` (per plugin instance), and
 | User input | `chat.message` | `session.prompt` |
 | Before a command | `command.execute.before` | No equivalent global hook |
 
-V1 hook records preserve `{ input, output }`. V2 hook records contain `{ event }`
-with the native V2 payload; they are not payload-compatible with V1.
+V1 hook records preserve `{ input, output }`. V2 hook records contain
+`{ event }` with the native V2 payload; they are not payload-compatible with V1.
 
 V2's prompt hook runs before durable prompt admission, not after a chat message
-is persisted. Commands that submit through `session.prompt` also trigger it,
-but it is not a general command-execution trace. Prompt admission retries can
+is persisted. Commands that submit through `session.prompt` also trigger it, but
+it is not a general command-execution trace. Prompt admission retries can
 produce duplicate observations. V2 hook registrations are disposed automatically
 when the plugin unloads.
 
@@ -185,5 +211,5 @@ npm test
 ```
 
 Tests exercise the recorder and both entrypoints with mocked OpenCode contexts.
-Also validate loading and real tool/prompt activity in each target OpenCode release
-before distributing the plugin.
+Also validate loading and real tool/prompt activity in each target OpenCode
+release before distributing the plugin.

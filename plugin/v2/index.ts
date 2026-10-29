@@ -4,7 +4,10 @@ import { Recorder } from "../shared/recorder.js";
 export default Plugin.define({
   id: "opencode-balrog",
   async setup(ctx) {
-    const recorder = new Recorder("v2");
+    const recorder = new Recorder("v2", {
+      logEndpoint: ctx.options.logEndpoint,
+      logPath: ctx.options.logPath,
+    });
     await recorder.record("initialize", null, {
       context: {
         location: ctx.location,

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, type TestContext } from "node:test";
@@ -49,24 +49,24 @@ test("recorder posts the envelope and keeps a stable per-instance ID", async (t)
 });
 
 for (const failure of ["http", "network", "timeout", "disabled"] as const) {
-  test(`recorder writes JSON lines on ${failure} fallback`, async (t) => {
+  test(`recorder writes JSON lines to logPath on ${failure}`, async (t) => {
     const directory = await mkdtemp(join(tmpdir(), "balrog-test-"));
     t.after(() => rm(directory, { recursive: true, force: true }));
-    const fallbackPath = join(directory, "balrog.json");
+    const logPath = join(directory, "balrog.json");
     const fetchMock = t.mock.method(globalThis, "fetch", async () => {
       if (failure === "network") throw new TypeError("fetch failed");
       if (failure === "timeout") throw new DOMException("Timed out", "TimeoutError");
       return new Response(null, { status: 503 });
     });
     const recorder = new Recorder("v2", {
-      fallbackPath,
-      ...(failure === "disabled" ? { url: "" } : {}),
+      logPath,
+      ...(failure === "disabled" ? { logEndpoint: "" } : {}),
     });
 
     await recorder.record("initialize", null, { context: {} });
     await recorder.record("session.prompt", "session-1", { event: { text: "hello" } });
 
-    const lines = (await readFile(fallbackPath, "utf8")).trim().split("\n");
+    const lines = (await readFile(logPath, "utf8")).trim().split("\n");
     assert.equal(lines.length, 2);
     assert.equal(JSON.parse(lines[0]).apiVersion, "v2");
     assert.equal(JSON.parse(lines[1]).sessionID, "session-1");
@@ -74,13 +74,27 @@ for (const failure of ["http", "network", "timeout", "disabled"] as const) {
   });
 }
 
-test("successful delivery does not create a fallback file", async (t) => {
+test("successful delivery also writes to logPath", async (t) => {
   captureLogs(t);
   const directory = await mkdtemp(join(tmpdir(), "balrog-test-"));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const recorder = new Recorder("v2", { fallbackPath: join(directory, "balrog.json") });
+  const logPath = join(directory, "balrog.json");
+  const recorder = new Recorder("v2", { logPath });
   await recorder.record("initialize", null, {});
-  assert.deepEqual(await readdir(directory), []);
+  const lines = (await readFile(logPath, "utf8")).trim().split("\n");
+  assert.equal(lines.length, 1);
+  assert.equal(JSON.parse(lines[0]).tag, "initialize");
+});
+
+test("endpoint failures do not write a file when logPath is unset", async (t) => {
+  const fetchMock = t.mock.method(globalThis, "fetch", async () => {
+    throw new TypeError("fetch failed");
+  });
+  const recorder = new Recorder("v2");
+
+  await recorder.record("initialize", null, {});
+
+  assert.equal(fetchMock.mock.callCount(), 1);
 });
 
 test("V1 preserves its hooks, payloads, and legacy entrypoint", async (t) => {
@@ -182,6 +196,7 @@ test("V2 subscribes to native events and records them without modifying them", a
   const context = {
     app: { version: "2.2.0" },
     location: { directory: "C:/project", project: { id: "project-1" } },
+    options: {},
     event: {
       async *subscribe(options: { types: string[]; signal: AbortSignal }) {
         assert.deepEqual(options.types, subscribedTypes);
@@ -214,4 +229,35 @@ test("V2 subscribes to native events and records them without modifying them", a
     events.map((event) => event.data.sessionID));
   assert.ok(records.every((record) => record.apiVersion === "v2"));
   assert.ok(records.every((record) => record.pluginID === records[0].pluginID));
+});
+
+test("V2 plugin options configure the log endpoint and log path", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "balrog-v2-options-"));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const logPath = join(directory, "custom-log.jsonl");
+  const logEndpoint = "http://localhost:5002/custom-log";
+  t.mock.method(globalThis, "fetch", async (url: RequestInfo | URL) => {
+    assert.equal(url, logEndpoint);
+    return new Response(null, { status: 503 });
+  });
+
+  const context = {
+    app: { version: "2.2.0" },
+    location: { directory: "C:/project", project: { id: "project-1" } },
+    options: { logEndpoint, logPath },
+    event: {
+      async *subscribe() {},
+    },
+  } as unknown as Plugin.Context;
+
+  const dispose = await v2.setup(context);
+  if (typeof dispose !== "function") {
+    throw new Error("Expected V2 setup to return a cleanup function");
+  }
+  await dispose();
+
+  const lines = (await readFile(logPath, "utf8")).trim().split("\n");
+  assert.equal(lines.length, 1);
+  assert.equal(JSON.parse(lines[0]).tag, "initialize");
+  assert.equal(JSON.parse(lines[0]).apiVersion, "v2");
 });
