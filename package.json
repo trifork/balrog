@@ -4,14 +4,14 @@
   "type": "module",
   "packageManager": "npm@10.0.0",
   "scripts": {
-    "serve": "tsx server/index.ts",
+    "record": "tsx server/record.ts",
     "typecheck": "tsc --noEmit --incremental false",
     "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
-    "@opencode/plugin": "2.2.0",
     "@opencode-ai/plugin": "^1.19.0",
-    "@opencode-ai/sdk": "^1.19.0"
+    "@opencode-ai/sdk": "^1.19.0",
+    "@opencode/plugin": "2.2.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

@@ -9,7 +9,7 @@ plugin/
   shared/recorder.ts   HTTP transport and file fallback
   v1/index.ts          OpenCode V1 hooks
   v2/index.ts          OpenCode V2 hooks
-server/index.ts       Log receiver for both versions
+server/record.ts      Log recorder for both versions
 ```
 
 ## Install on Windows
@@ -135,7 +135,7 @@ To specify explicitly the endpoint to forward log entries to you can specify the
 
 The API versions and tracing differences are the same on Windows and Linux.
 
-## Run the receiver
+## Record events
 
 In a separate terminal, run the commands for your platform.
 
@@ -143,33 +143,33 @@ In a separate terminal, run the commands for your platform.
 
 ```powershell
 Set-Location C:\code\hackerdays\balrog
-npm run serve
+npm run record
 ```
 
 **Linux:**
 
 ```sh
 cd /home/user/code/balrog
-npm run serve
+npm run record
 ```
 
-The receiver listens on `http://localhost:5001/log` and writes
-`balrog-log-<pluginID>[-<sessionID>].jsonl` files in its working directory. To
-choose another directory:
+The recorder listens on `http://localhost:5001/log` and writes
+`balrog-<pluginID>[-<sessionID>].jsonl` files in its working directory. The
+working directory is the default log directory. To choose another directory:
 
 **Windows (PowerShell):**
 
 ```powershell
-npm run serve -- --log-dir C:\logs\balrog
+npm run record -- --log C:\logs\balrog
 ```
 
 **Linux:**
 
 ```sh
-npm run serve -- --log-dir "$HOME/logs/balrog"
+npm run record -- --log "$HOME/logs/balrog"
 ```
 
-Start the receiver before loading the plugin to capture initialization there.
+Start the recorder before loading the plugin to capture initialization there.
 The optional `logPath` plugin option appends every record as a JSON line to that
 file, whether or not delivery to the receiver succeeds. If `logPath` is unset,
 receiver errors or timeouts do not create a local log file. The optional

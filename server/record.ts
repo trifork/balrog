@@ -1,15 +1,17 @@
 import * as fs from "fs";
 import * as path from "node:path";
+import { parseArgs } from "node:util";
 import { LogReceiver } from "./log-receiver.js";
 
-const logDirIndex = process.argv.indexOf("--log", 2);
-if (logDirIndex !== -1 && !process.argv[logDirIndex + 1]) {
-  throw new Error("--log requires a path");
-}
+const { values } = parseArgs({
+  options: {
+    log: { type: "string" },
+  },
+  allowPositionals: false,
+  strict: true,
+});
 
-const logDir = path.resolve(
-  logDirIndex === -1 ? process.cwd() : process.argv[logDirIndex + 1],
-);
+const logDir = path.resolve(values.log ?? process.cwd());
 fs.mkdirSync(logDir, { recursive: true });
 
 const receiver = new LogReceiver();
