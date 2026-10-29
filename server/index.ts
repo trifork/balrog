@@ -1,6 +1,6 @@
-import { createServer } from "node:http";
 import * as fs from "fs";
 import * as path from "node:path";
+import { LogReceiver } from "./log-receiver.js";
 
 const logDirIndex = process.argv.indexOf("--log", 2);
 if (logDirIndex !== -1 && !process.argv[logDirIndex + 1]) {
@@ -12,59 +12,23 @@ const logDir = path.resolve(
 );
 fs.mkdirSync(logDir, { recursive: true });
 
-const server = createServer(async (request, response) => {
-  const reply = (status: number, body: object) => {
-    response.writeHead(status, {
-      "Content-Type": "application/json",
-    });
-    response.end(JSON.stringify(body));
-  };
-
-  if (request.url !== "/log") {
-    reply(404, { error: "Not found" });
-    return;
+const receiver = new LogReceiver();
+receiver.subscribe((event) => {
+  const pluginID = event["pluginID"];
+  const sessionID = event["sessionID"];
+  const identifiers = [pluginID, sessionID].filter((id) => !!id);
+  const basename = `balrog-${identifiers.join("-")}.jsonl`;
+  const filename = path.join(logDir, basename);
+  if (!fs.existsSync(filename)) {
+    console.log(`Created session log ${basename}`);
   }
-
-  if (request.method !== "POST") {
-    response.setHeader("Allow", "POST");
-    reply(405, { error: "Method not allowed" });
-    return;
-  }
-
-  try {
-    const chunks: Buffer[] = [];
-
-    for await (const chunk of request) {
-      chunks.push(Buffer.from(chunk));
-    }
-
-    const event: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-
-    if (event === null || typeof event !== "object" || Array.isArray(event)) {
-      reply(400, { error: "Expected a JSON object" });
-      return;
-    }
-
-    const fields = event as Record<string, unknown>;
-    const pluginID = fields["pluginID"];
-    const sessionID = fields["sessionID"];
-    const identifiers = [pluginID, sessionID].filter((id) => !!id);
-    const basename = `balrog-${identifiers.join("-")}.jsonl`;
-    const filename = path.join(logDir, basename);
-    if (!fs.existsSync(filename)) {
-      console.log(`Created session log ${basename}`);
-    }
-    const line = JSON.stringify(event);
-    fs.appendFileSync(filename, `${line}\n`);
-    console.log(
-      `Wrote ${(line.length / 1024).toFixed(1)}K ${fields["tag"]} event to ${basename}`,
-    );
-    reply(200, { ok: true });
-  } catch {
-    reply(400, { error: "Invalid JSON or incomplete request" });
-  }
+  const line = JSON.stringify(event);
+  fs.appendFileSync(filename, `${line}\n`);
+  console.log(
+    `Wrote ${(line.length / 1024).toFixed(1)}K ${event["tag"]} event to ${basename}`,
+  );
 });
 
-server.listen(5001, "localhost", () => {
+receiver.listen(5001, "localhost", () => {
   console.log("Balrog receiver listening on http://localhost:5001");
 });
