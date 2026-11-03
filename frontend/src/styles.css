@@ -31,7 +31,22 @@ button:disabled { opacity: 0.4; cursor: default; }
 .workspace { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; min-height: 0; overflow: hidden; }
 .workspace[data-pane-open="false"] { grid-template-columns: minmax(0, 1fr); }
 .dashboard { min-width: 0; min-height: 0; width: 100%; padding: 16px 16px 24px; overflow: auto; overscroll-behavior: contain; }
-.right-pane { min-width: 0; min-height: 0; border-left: 1px solid var(--border); background: #151618; }
+.right-pane { min-width: 0; min-height: 0; overflow: auto; overscroll-behavior: contain; border-left: 1px solid var(--border); background: #151618; }
+.file-activity { padding: 16px; }
+.file-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+#prompt-select { flex: 1; min-width: 0; max-width: 100%; padding: 8px; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; }
+#follow-files { padding: 8px 12px; }
+#file-prompt { white-space: pre-wrap; overflow-wrap: anywhere; }
+#file-summary { color: var(--muted); font-size: 11px; }
+#file-tree, #file-tree ul { list-style: none; padding-left: 18px; }
+#file-tree { padding-left: 0; font: 12px/1.8 ui-monospace, monospace; overflow-wrap: anywhere; }
+#file-tree details { border: 0; }
+#file-tree summary { padding: 3px 0; font: inherit; }
+.file-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 3px 0; }
+.file-badge { padding: 0 6px; border-radius: 4px; background: #e6b47915; color: #e6b479; font-size: 10px; }
+.file-badge[data-action="read"] { color: #95bbef; background: #95bbef15; }
+.file-badge[data-action="created"] { color: #8acba4; background: #8acba415; }
+.file-badge[data-action="deleted"], .file-badge[data-outcome="failed"] { color: #ed8e8e; background: #ed8e8e15; }
 .bottom-bar { border-top: 1px solid var(--border); background: #151618; }
 .live-badge { display: inline-flex; align-items: center; gap: 8px; justify-self: end; padding: 4px 9px; border: 1px solid #86cfa124; border-radius: 20px; background: #86cfa108; color: #a6d9b8; font-size: 11px; white-space: nowrap; }
 .app:not([data-connection="live"]) .live-badge { color: #d5ac6d; border-color: #d5ac6d24; background: #d5ac6d08; }

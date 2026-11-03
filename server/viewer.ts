@@ -3,11 +3,18 @@ import { WebSocket, WebSocketServer } from "ws";
 import type { ViewerMessage, ViewerResponse } from "../shared/viewer-protocol.js";
 import { SessionAnalyzer } from "./analyzer.js";
 import { eventContent } from "./event-content.js";
+import { FileActivityTracker, type PromptActivity } from "./file-activity.js";
 import { serveFrontend } from "./frontend.js";
 import type { LogEvent } from "./log-receiver.js";
 
+interface RetainedEvent {
+  event: LogEvent;
+  fileActivity?: PromptActivity;
+}
+
 export class LogViewer {
-  private readonly events: LogEvent[] = [];
+  private readonly events: RetainedEvent[] = [];
+  private readonly fileActivity = new FileActivityTracker();
   private readonly subscribers = new Set<WebSocket>();
   private readonly sockets = new WebSocketServer({ noServer: true, maxPayload: 16_384 });
   private readonly server: Server;
@@ -99,7 +106,7 @@ export class LogViewer {
           this.send(client, {
             type: "snapshot",
             sessions: this.analyzer.getSessions(),
-            events: this.events.map((event, index) => this.message(event, index + 1)),
+            events: this.events.map((entry, index) => this.message(entry, index + 1)),
           });
           this.subscribers.add(client);
         } catch {
@@ -110,9 +117,10 @@ export class LogViewer {
   }
 
   publish(event: LogEvent): void {
-    this.events.push(event);
+    const entry = { event, fileActivity: this.fileActivity.process(event) };
+    this.events.push(entry);
     if (!this.subscribers.size) return;
-    const message = this.message(event, this.events.length);
+    const message = this.message(entry, this.events.length);
     for (const client of this.subscribers) this.send(client, { type: "event", message });
   }
 
@@ -137,11 +145,12 @@ export class LogViewer {
     if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(response));
   }
 
-  private message(event: LogEvent, id: number): ViewerMessage {
+  private message({ event, fileActivity }: RetainedEvent, id: number): ViewerMessage {
     const sessionID = this.analyzer.getSessionID(event);
     return {
       id,
       event,
+      fileActivity,
       content: eventContent(event),
       command: this.analyzer.getToolCall(event)?.command?.split(/\r?\n/, 1)[0],
       sessionTitle: sessionID ? this.analyzer.getSessionTitle(sessionID) : undefined,

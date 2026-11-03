@@ -185,11 +185,14 @@ test("V2 subscribes to native events and records them without modifying them", a
     "session.execution.failed",
     "session.execution.started",
     "session.execution.succeeded",
+    "session.inbox.delivered",
+    "session.inbox.enqueued",
     "session.renamed",
     "session.text.ended",
     "session.text.started",
     "session.tool.called",
     "session.tool.failed",
+    "session.tool.input.started",
     "session.tool.success",
   ];
   let subscriptionSignal: AbortSignal | undefined;

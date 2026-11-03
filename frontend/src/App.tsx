@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { EventFeed } from "./EventFeed";
+import { FileActivity } from "./FileActivity";
 import { Icon } from "./Icon";
 import { SessionTabs } from "./SessionTabs";
 import { useViewer } from "./useViewer";
@@ -47,7 +48,9 @@ export function App() {
           {error && <p role="alert">{error}</p>}
           <EventFeed events={events} selectedSession={selected} sessionTitle={sessionTitle} />
         </main>
-        <aside id="right-pane" className="right-pane" aria-label="Right pane" hidden={!rightPaneOpen} />
+        <aside id="right-pane" className="right-pane" aria-label="Right pane" hidden={!rightPaneOpen}>
+          <FileActivity key={selected} events={events} sessions={sessions} selectedSession={selected} />
+        </aside>
       </div>
       <footer className="bottom-bar" aria-label="Bottom bar" />
     </div>

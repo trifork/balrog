@@ -75,9 +75,9 @@ test("searches raw events case-insensitively and combines event and session filt
   expect(cards()[0].textContent).toContain("Hello agent");
   await user.keyboard("{Escape}");
   expect(cards()).toHaveLength(4);
-  await user.selectOptions(screen.getByRole("combobox"), "tool");
+  await user.selectOptions(screen.getByRole("combobox", { name: "Filter event type" }), "tool");
   expect(cards()).toHaveLength(2);
-  await user.selectOptions(screen.getByRole("combobox"), "error");
+  await user.selectOptions(screen.getByRole("combobox", { name: "Filter event type" }), "error");
   expect(cards()).toHaveLength(1);
   expect(cards()[0].getAttribute("data-kind")).toBe("error");
   await user.click(screen.getByRole("tab", { name: /Second session/ }));
@@ -153,8 +153,8 @@ test("keeps raw details open across filtering and lets new events inherit the co
   const { rerender } = render(<App />);
   const details = cards()[0].querySelector("details")!;
   await user.click(within(cards()[0]).getByText("Raw event"));
-  await user.selectOptions(screen.getByRole("combobox"), "tool");
-  await user.selectOptions(screen.getByRole("combobox"), "all");
+  await user.selectOptions(screen.getByRole("combobox", { name: "Filter event type" }), "tool");
+  await user.selectOptions(screen.getByRole("combobox", { name: "Filter event type" }), "all");
   expect(cards()[0].querySelector("details")).toBe(details);
   expect(details.open).toBe(true);
   for (const button of screen.getAllByRole("button", { name: "Collapse event" })) await user.click(button);
@@ -170,4 +170,24 @@ test("shows initial empty state and disables collapse when no event has content"
   expect((screen.getByRole("button", { name: "Collapse all" }) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.change(screen.getByRole("searchbox"), { target: { value: "missing" } });
   expect(screen.getByText("No matching events")).toBeTruthy();
+});
+
+test("shows file activity in the collapsible right pane and follows the selected session", async () => {
+  const user = userEvent.setup();
+  state.events = state.events.map((event) => event.id === 1 || event.id === 4 ? {
+    ...event,
+    fileActivity: {
+      id: String(event.id), sessionID: event.event.sessionID!, text: `Prompt ${event.id}`,
+      files: [{ path: `src/file${event.id}.ts`, action: "read", outcome: "success", callID: String(event.id) }],
+    },
+  } : event);
+  render(<App />);
+  expect(screen.getByText("file4.ts")).toBeTruthy();
+  await user.click(screen.getByRole("tab", { name: /First session/ }));
+  expect(screen.getByText("file1.ts")).toBeTruthy();
+  expect(screen.queryByText("file4.ts")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Collapse right pane" }));
+  expect(screen.queryByRole("region", { name: "Files touched per prompt" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Expand right pane" }));
+  expect(screen.getByText("file1.ts")).toBeTruthy();
 });

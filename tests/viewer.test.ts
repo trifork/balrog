@@ -98,6 +98,51 @@ test("WebSocket snapshots and live updates preserve raw events and display enric
   assert.equal(live.message.id, 5);
 });
 
+test("viewer replays immutable file activity snapshots and pushes live outcomes", { timeout: 5_000 }, async (t) => {
+  const { connect, publish } = await startViewer(t);
+  publish("session.prompt", { text: "Edit one file" });
+  publish("session.tool.input.started", { id: "c1", name: "patch" });
+  publish("session.tool.called", {
+    id: "c1", input: { patchText: "*** Begin Patch\n*** Update File: src/app.ts\n@@\n-old\n+new\n*** End Patch" },
+  });
+  publish("session.tool.success", { id: "c1" });
+  publish("session.prompt", { text: "Next prompt" });
+  const socket = await connect();
+  const snapshot = await request(socket, { type: "snapshot.request" });
+  assert.equal(snapshot.type, "snapshot");
+  if (snapshot.type !== "snapshot") return;
+  assert.equal(snapshot.events.length, 5);
+  const activities = snapshot.events.flatMap((message) => message.fileActivity ? [message.fileActivity] : []);
+  assert.equal(activities[0].text, "Edit one file");
+  assert.deepEqual(activities[0].files, []);
+  assert.equal(activities[1].files[0].outcome, "pending");
+  assert.equal(activities[2].files[0].outcome, "success");
+  assert.equal(activities[2].files[0].path, "src/app.ts");
+  assert.equal(activities[0].id, activities[2].id);
+  assert.notEqual(activities[3].id, activities[2].id);
+  assert.deepEqual(activities[3].files, []);
+  assert.deepEqual(await request(socket, { type: "snapshot.request" }), snapshot);
+
+  const pushed = once(socket, "message");
+  publish("session.tool.called", { id: "c2", tool: "read", input: { path: "README.md" } });
+  const [data] = await pushed;
+  const live: ViewerResponse = JSON.parse(String(data));
+  assert.equal(live.type, "event");
+  if (live.type !== "event") return;
+  assert.equal(live.message.id, 6);
+  assert.equal(live.message.fileActivity?.id, activities[3].id);
+  assert.equal(live.message.fileActivity?.files[0].path, "README.md");
+  assert.equal(live.message.fileActivity?.files[0].outcome, "pending");
+  const completed = once(socket, "message");
+  publish("session.tool.failed", { id: "c2" });
+  const [completedData] = await completed;
+  const outcome: ViewerResponse = JSON.parse(String(completedData));
+  assert.equal(outcome.type, "event");
+  if (outcome.type !== "event") return;
+  assert.equal(outcome.message.fileActivity?.files[0].outcome, "failed");
+  assert.equal(live.message.fileActivity?.files[0].outcome, "pending");
+});
+
 test("snapshots replay all 600 events and repeat without mutating retained history", { timeout: 5_000 }, async (t) => {
   const { connect, publish } = await startViewer(t);
   for (let index = 0; index < 600; index += 1) publish("session.execution.started");
