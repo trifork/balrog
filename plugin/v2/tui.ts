@@ -28,11 +28,10 @@ const BalrogSidebar = {
           flexDirection: "column",
           marginTop: 1,
           children: [
-            jsx("text", { children: jsx("b", { children: "Balrog" }) }),
             jsx("text", {
               children: jsx("a", {
                 get href() { return sessionURL(); },
-                get children() { return sessionURL(); },
+                get children() { return "View session in Balrog"; },
               }),
             }),
           ],
