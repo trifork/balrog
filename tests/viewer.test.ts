@@ -1,208 +1,162 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { once } from "node:events";
+import { connect as connectTCP } from "node:net";
+import { test, type TestContext } from "node:test";
+import WebSocket from "ws";
 import { SessionAnalyzer } from "../server/analyzer.js";
 import type { LogEvent } from "../server/log-receiver.js";
 import { LogViewer } from "../server/viewer.js";
+import type { ViewerResponse } from "../shared/viewer-protocol.js";
 
-test("viewer serves a page and streams events without writing log files", async (t) => {
+async function startViewer(t: TestContext) {
   const analyzer = new SessionAnalyzer();
   const viewer = new LogViewer(analyzer);
   await new Promise<void>((resolve) => viewer.listen(0, "localhost", resolve));
   t.after(() => viewer.close());
-
   const address = viewer.address();
   assert.ok(address && typeof address !== "string");
   const origin = `http://localhost:${address.port}`;
+  const publish = (tag: string, data: Record<string, unknown> = {}) => {
+    const event = {
+      tag, sessionID: "session-viewer", pluginID: "plugin-viewer", apiVersion: "v2",
+      [tag]: { type: tag, data: { sessionID: "session-viewer", ...data } },
+    } as unknown as LogEvent;
+    analyzer.process(event);
+    viewer.publish(event);
+    return event;
+  };
+  const connect = async () => {
+    const socket = new WebSocket(`${origin.replace("http", "ws")}/ws`, { origin });
+    t.after(() => socket.terminate());
+    await once(socket, "open");
+    return socket;
+  };
+  return { viewer, analyzer, origin, publish, connect };
+}
 
-  const page = await fetch(origin);
+async function request(socket: WebSocket, body: unknown): Promise<ViewerResponse> {
+  const response = once(socket, "message");
+  socket.send(typeof body === "string" ? body : JSON.stringify(body));
+  const [data] = await response;
+  return JSON.parse(String(data));
+}
+
+test("viewer serves built React assets and preserves the session HTTP API", { timeout: 5_000 }, async (t) => {
+  const { origin, publish } = await startViewer(t);
+  const page = await fetch(`${origin}/?session=session-viewer`);
   assert.equal(page.status, 200);
-  const pageText = await page.text();
-  assert.match(pageText, /Balrog log events/);
-  assert.match(pageText, /Activity overview/);
-  assert.match(pageText, /aria-label="Activity summary"/);
-  assert.match(pageText, /id="total-events"/);
-  assert.match(pageText, /id="total-sessions"/);
-  assert.match(pageText, /id="total-tools"/);
-  assert.match(pageText, /type="search"[^>]+aria-label="Search events"/);
-  assert.match(pageText, /id="event-filter" aria-label="Filter event type"/);
-  assert.match(pageText, /search\.addEventListener\('input', updateView\)/);
-  assert.match(pageText, /eventFilter\.addEventListener\('change', updateView\)/);
-  assert.match(pageText, /card\.hidden = !matchesFilters\(card\)/);
-  assert.match(pageText, /No matching events/);
-  assert.match(pageText, /tabs\.addEventListener\('keydown'/);
-  assert.match(pageText, /aria-orientation/);
-  assert.match(pageText, /@media \(max-width: 760px\)/);
-  const pageScript = pageText.match(/<script>([\s\S]*?)<\/script>/)?.[1];
-  assert.ok(pageScript, "viewer page should contain its client script");
-  assert.doesNotThrow(() => new Function(pageScript));
-  assert.match(pageText, /id="session-tabs"/);
-  assert.match(pageText, /All sessions/);
-  assert.match(pageText, /const sessionFromURL =/);
-  assert.match(pageText, /searchParams\.get\('session'\)/);
-  assert.match(pageText, /searchParams\.set\('session', selectedSession\)/);
-  assert.match(pageText, /searchParams\.delete\('session'\)/);
-  assert.match(pageText, /window\.history\.pushState/);
-  assert.match(pageText, /window\.addEventListener\('popstate'/);
-  assert.match(pageText, /if \(meta\) meta\.hidden = Boolean\(selectedSession\)/);
-  assert.match(pageText, /id="collapse-all"/);
-  assert.match(pageText, /Collapse all/);
-  assert.match(pageText, /const setCardCollapsed =/);
-  assert.match(pageText, /className = 'event-collapse'/);
-  assert.match(pageText, /const hasContent = typeof message\.content === 'string'/);
-  assert.match(pageText, /if \(hasContent\) \{/);
-  assert.match(pageText, /querySelectorAll\('article\.has-content'\)/);
-  assert.match(pageText, /article\.collapsed > \.content \{ display: none; \}/);
-  assert.doesNotMatch(pageText, /article\.collapsed > :not\(header\)/);
-  assert.match(pageText, /control\.textContent = collapsed \? '▸' : '▾'/);
-  assert.match(pageText, /heading\.append\(collapse\)/);
-  assert.match(pageText, /heading\.append\(tag, time, meta\)/);
-  assert.match(pageText, /meta\.hidden = Boolean\(selectedSession\)/);
-  assert.match(pageText, /if \(hasContent\) setCardCollapsed\(card, collapseNewEvents\)/);
-  assert.match(pageText, /fetch\('\/api\/sessions'\)/);
-  assert.doesNotMatch(pageText, /messageContent/);
-  assert.match(pageText, /message\.content/);
-  assert.match(pageText, /message\.command/);
-  assert.match(pageText, /className = 'command'/);
-  assert.match(pageText, /body\.classList\.add\('tool-content'\)/);
-  assert.match(pageText, /const rawEventDetails =/);
-  assert.match(pageText, /details\.open = false/);
-  assert.match(pageText, /summary\.textContent = 'Raw event'/);
-  assert.match(pageText, /card\.append\(rawEventDetails\(event\)\)/);
-  assert.doesNotMatch(pageText, /hiddenFields|humanReadable|isIdentifier/);
-  assert.doesNotMatch(pageText, /No readable details/);
-  assert.doesNotMatch(pageScript, /existing\.textContent = message\.sessionTitle/);
-  assert.match(pageText, /JSON\.stringify\(event, null, 2\)/);
-  assert.doesNotMatch(pageText, /message\.sessionTitle \|\| event\.sessionID/);
-
-  const pageWithSession = await fetch(`${origin}/?session=session-viewer`);
-  assert.equal(pageWithSession.status, 200);
-  assert.match(await pageWithSession.text(), /Balrog log events/);
-
-  const event = {
-    tag: "session.prompt",
-    sessionID: "session-viewer",
-    pluginID: "plugin-viewer",
-    apiVersion: "v2",
-    "session.prompt": { event: { text: "hello" } },
-  } as unknown as LogEvent;
-  analyzer.process(event);
-  viewer.publish(event);
-
-  const stream = await fetch(`${origin}/events`);
-  assert.equal(
-    stream.headers.get("Content-Type"),
-    "text/event-stream; charset=utf-8",
-  );
-  const reader = stream.body?.getReader();
-  assert.ok(reader);
-  const chunk = await reader.read();
-  const streamText = new TextDecoder().decode(chunk.value);
-  assert.match(streamText, /session-viewer/);
-  const streamMessage = JSON.parse(streamText.match(/data: (.+)\n\n/)![1]);
-  assert.equal(streamMessage.content, "hello");
-  await reader.cancel();
-
-  const renamedEvent = {
-    tag: "session.renamed",
-    sessionID: "session-viewer",
-    pluginID: "plugin-viewer",
-    apiVersion: "v2",
-    "session.renamed": {
-      event: {
-        type: "session.renamed",
-        data: { sessionID: "session-viewer", title: "Viewer session" },
-      },
-    },
-  } as unknown as LogEvent;
-  analyzer.process(renamedEvent);
-  viewer.publish(renamedEvent);
-  const toolSuccessEvent = {
-    tag: "session.tool.success",
-    sessionID: "session-viewer",
-    pluginID: "plugin-viewer",
-    apiVersion: "v2",
-    "session.tool.success": {
-      type: "session.tool.success",
-      data: {
-        sessionID: "session-viewer",
-        id: "call-1",
-        content: [{ type: "text", text: "tool output" }],
-      },
-    },
-  } as unknown as LogEvent;
-  const toolCalledEvent = {
-    tag: "session.tool.called",
-    sessionID: "session-viewer",
-    pluginID: "plugin-viewer",
-    apiVersion: "v2",
-    "session.tool.called": {
-      type: "session.tool.called",
-      data: {
-        sessionID: "session-viewer",
-        id: "call-1",
-        input: { command: "npm test\n-- --verbose" },
-      },
-    },
-  } as unknown as LogEvent;
-  analyzer.process(toolCalledEvent);
-  viewer.publish(toolCalledEvent);
-  analyzer.process(toolSuccessEvent);
-  viewer.publish(toolSuccessEvent);
-  const replay = await fetch(`${origin}/events`);
-  const replayReader = replay.body?.getReader();
-  assert.ok(replayReader);
-  const replayDecoder = new TextDecoder();
-  let replayText = "";
-  while ((replayText.match(/data: /g) ?? []).length < 4) {
-    const replayChunk = await replayReader.read();
-    assert.ok(!replayChunk.done, "event stream closed before replaying all events");
-    replayText += replayDecoder.decode(replayChunk.value, { stream: true });
+  const html = await page.text();
+  assert.match(html, /Balrog log events/);
+  assert.match(html, /id="root"/);
+  assert.doesNotMatch(html, /EventSource|createElement\('article'\)/);
+  const scriptPath = html.match(/src="([^"]+\.js)"/)?.[1];
+  assert.ok(scriptPath);
+  const script = await fetch(`${origin}${scriptPath}`);
+  assert.equal(script.status, 200);
+  assert.match(script.headers.get("content-type")!, /javascript/);
+  const cssPath = html.match(/href="([^"]+\.css)"/)?.[1];
+  assert.ok(cssPath);
+  assert.equal((await fetch(`${origin}${cssPath}`)).status, 200);
+  for (const pathname of ["/missing", "/server/viewer.ts", "/assets/%2e%2e%2f%2e%2e%2fpackage.json", "/%00", "/events"]) {
+    assert.equal((await fetch(`${origin}${pathname}`)).status, 404);
   }
-  await replayReader.cancel();
-  const replayMessages = replayText.split("\n\n").filter(Boolean).map((frame) =>
-    JSON.parse(frame.slice("data: ".length)));
-  assert.equal(replayMessages[0].content, "hello");
-  assert.equal(Object.hasOwn(replayMessages[1], "content"), false);
-  assert.equal(replayMessages[2].content, "npm test\n-- --verbose");
-  assert.equal(replayMessages[2].command, "npm test");
-  assert.equal(replayMessages[3].content, "tool output");
-  assert.equal(replayMessages[3].command, "npm test");
-
+  assert.equal((await fetch(origin, { method: "POST" })).status, 405);
+  publish("session.renamed", { title: "Viewer session" });
+  const sessions = await (await fetch(`${origin}/api/sessions`)).json();
+  assert.equal(sessions[0].title, "Viewer session");
   const session = await fetch(`${origin}/api/sessions/session-viewer`);
-  assert.equal(session.status, 200);
   assert.equal((await session.json()).title, "Viewer session");
+  assert.equal((await fetch(`${origin}/api/sessions/missing`)).status, 404);
 });
 
-test("viewer replays every event loaded before a browser connects", async (t) => {
-  const viewer = new LogViewer();
-  await new Promise<void>((resolve) => viewer.listen(0, "localhost", resolve));
-  t.after(() => viewer.close());
+test("WebSocket snapshots and live updates preserve raw events and display enrichment", { timeout: 5_000 }, async (t) => {
+  const { connect, publish } = await startViewer(t);
+  const first = publish("session.text.ended", { text: "hello" });
+  publish("session.renamed", { title: "Viewer session" });
+  publish("session.tool.called", { id: "call-1", input: { command: "npm test\n-- --verbose" } });
+  publish("session.tool.success", { id: "call-1", result: { content: [{ type: "text", text: "tool output" }] } });
+  const socket = await connect();
+  const snapshot = await request(socket, { type: "snapshot.request" });
+  assert.equal(snapshot.type, "snapshot");
+  if (snapshot.type !== "snapshot") return;
+  assert.equal(snapshot.events.length, 4);
+  assert.equal(snapshot.sessions[0].title, "Viewer session");
+  assert.deepEqual(snapshot.events[0].event, first);
+  assert.equal(snapshot.events[0].content, "hello");
+  assert.equal(snapshot.events[2].content, "npm test\n-- --verbose");
+  assert.equal(snapshot.events[2].command, "npm test");
+  assert.equal(snapshot.events[3].content, "tool output");
+  assert.equal(snapshot.events[3].command, "npm test");
+  assert.equal(new Set(snapshot.events.map((event) => event.id)).size, 4);
+  const pushed = once(socket, "message");
+  const next = publish("session.execution.succeeded");
+  const [data] = await pushed;
+  const live = JSON.parse(String(data));
+  assert.equal(live.type, "event");
+  assert.deepEqual(live.message.event, next);
+  assert.equal(live.message.session.eventCount, 5);
+  assert.equal(live.message.id, 5);
+});
 
+test("snapshots replay all 600 events and repeat without mutating retained history", { timeout: 5_000 }, async (t) => {
+  const { connect, publish } = await startViewer(t);
+  for (let index = 0; index < 600; index += 1) publish("session.execution.started");
+  const socket = await connect();
+  const first = await request(socket, { type: "snapshot.request" });
+  assert.equal(first.type, "snapshot");
+  if (first.type !== "snapshot") return;
+  assert.equal(first.events.length, 600);
+  const second = await request(socket, { type: "snapshot.request" });
+  assert.deepEqual(second, first);
+  socket.close();
+  const reconnected = await connect();
+  assert.deepEqual(await request(reconnected, { type: "snapshot.request" }), first);
+});
+
+test("invalid requests return errors, and only requested subscriptions receive events", { timeout: 5_000 }, async (t) => {
+  const { connect, publish } = await startViewer(t);
+  const socket = await connect();
+  publish("session.execution.started");
+  for (const body of ["not json", null, [], {}, { type: "unknown" }]) {
+    const response = await request(socket, body);
+    assert.equal(response.type, "error");
+  }
+  const snapshot = await request(socket, { type: "snapshot.request" });
+  assert.equal(snapshot.type, "snapshot");
+  if (snapshot.type === "snapshot") assert.equal(snapshot.events.length, 1);
+});
+
+test("viewer rejects cross-origin WebSocket upgrades", { timeout: 5_000 }, async (t) => {
+  const { origin } = await startViewer(t);
+  const socket = new WebSocket(`${origin.replace("http", "ws")}/ws`, { origin: "https://untrusted.example" });
+  const error = await new Promise<Error>((resolve) => socket.once("error", resolve));
+  assert.match(error.message, /403/);
+});
+
+test("malformed HTTP and WebSocket request targets return 400 without stopping the viewer", { timeout: 5_000 }, async (t) => {
+  const { viewer, origin } = await startViewer(t);
   const address = viewer.address();
   assert.ok(address && typeof address !== "string");
-  const origin = `http://localhost:${address.port}`;
-  for (let index = 0; index < 600; index += 1) {
-    const sessionID = `session-${index}`;
-    viewer.publish({
-      tag: "session.execution.started",
-      sessionID,
-      pluginID: "plugin-viewer",
-      apiVersion: "v2",
-      "session.execution.started": { event: { data: { sessionID } } },
-    } as unknown as LogEvent);
+  for (const connection of ["close", "Upgrade\r\nUpgrade: websocket"]) {
+    const socket = connectTCP(address.port, "localhost");
+    t.after(() => socket.destroy());
+    await once(socket, "connect");
+    socket.end(`GET //[ HTTP/1.1\r\nHost: localhost\r\nConnection: ${connection}\r\n\r\n`);
+    let response = "";
+    for await (const chunk of socket) response += chunk.toString();
+    assert.match(response, /^HTTP\/1\.1 400/);
   }
+  assert.equal((await fetch(`${origin}/api/sessions`)).status, 200);
+});
 
-  const response = await fetch(`${origin}/events`);
-  const reader = response.body?.getReader();
-  assert.ok(reader);
-  const decoder = new TextDecoder();
-  let streamText = "";
-  while ((streamText.match(/data: /g) ?? []).length < 600) {
-    const chunk = await reader.read();
-    assert.ok(!chunk.done, "event stream closed before all saved events were replayed");
-    streamText += decoder.decode(chunk.value, { stream: true });
-  }
-  await reader.cancel();
-
-  assert.equal((streamText.match(/data: /g) ?? []).length, 600);
+test("viewer shutdown closes active WebSockets", { timeout: 5_000 }, async () => {
+  const viewer = new LogViewer();
+  await new Promise<void>((resolve) => viewer.listen(0, "localhost", resolve));
+  const address = viewer.address();
+  assert.ok(address && typeof address !== "string");
+  const socket = new WebSocket(`ws://localhost:${address.port}/ws`);
+  await once(socket, "open");
+  const closed = once(socket, "close");
+  await viewer.close();
+  await closed;
 });

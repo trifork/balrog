@@ -10,7 +10,9 @@ plugin/
   v1/index.ts          OpenCode V1 hooks
   v2/index.ts          OpenCode V2 hooks
 server/record.ts      Log recorder for both versions
-server/view.ts        Live log event webpage
+server/view.ts        Live viewer HTTP and WebSocket server
+frontend/            React viewer built with Vite
+shared/              Viewer WebSocket protocol types
 ```
 
 ## Install on Windows
@@ -189,13 +191,24 @@ Run the viewer instead of the recorder to receive events on the same
 npm run view
 ```
 
-The event receiver listens on port 5001, and the web page is served separately
-at <http://localhost:5002>. Open the page before or after starting OpenCode; it
+This builds the React frontend and starts the viewer. The event receiver listens
+on port 5001, and the web page is served separately at
+<http://localhost:5002>. Open the page before or after starting OpenCode; it
 shows incoming events and events already received during this viewer process. To
 change the web page port, use `npm run view -- --port 8080`. By default the
 viewer retains events in memory and does not write them to files. Events can
 include prompt text, tool arguments, and tool results, so the receiver and page
 bind to localhost by default.
+
+The frontend uses a same-origin WebSocket at `/ws` for two-way viewer
+communication. After connecting, it sends `{ "type": "snapshot.request" }`.
+The server replies with `{ "type": "snapshot", "sessions": [...], "events": [...] }`
+and then pushes new events as `{ "type": "event", "message": {...} }`. Invalid
+requests receive `{ "type": "error", "message": "..." }`. Each message includes
+a viewer-local numeric ID alongside the original event envelope and display
+metadata. The native event is not modified. Reconnecting requests a fresh
+snapshot and replaces the feed, avoiding duplicate events. The old `/events`
+SSE endpoint is no longer available. WebSocket requests do not control OpenCode.
 
 The dashboard shows live event, session, and tool-call counts. Choose a session
 in the sidebar, search event content or commands, and filter by event type to
@@ -253,10 +266,26 @@ when the plugin unloads.
 These commands work in both PowerShell and Linux shells:
 
 ```sh
+npm run view-dev
+npm run build
 npm run typecheck
 npm test
 ```
 
-Tests exercise the recorder, live viewer, and both entrypoints with mocked
-OpenCode contexts. Also validate loading and real tool/prompt activity in each
-target OpenCode release before distributing the plugin.
+`npm run view-dev` starts the watched Node backend and Vite together. Open
+<http://localhost:5173> for frontend development; Vite proxies WebSockets and
+the session HTTP API to the backend on port 5002. The receiver remains on port
+5001. Stop both processes with Ctrl+C. `npm run build` only generates the static
+frontend in `frontend/dist/`; generated files are not committed. For backend
+development on its own, use `npm run dev:server`.
+
+The frontend uses React, TypeScript, and plain CSS, without a router or global
+state library. Its components live in `frontend/src/`; `useViewer.ts` owns the
+WebSocket lifecycle, and `shared/viewer-protocol.ts` defines transport types.
+
+`npm test` runs React behavior tests, builds the frontend, then runs the server
+tests. Use `npm run test:frontend` or `npm run test:server` to run either suite
+separately. Tests exercise filtering, navigation, collapse controls, reconnects,
+WebSocket snapshots and live delivery, the recorder, and both plugin entrypoints
+with mocked OpenCode contexts. Also validate loading and real tool/prompt
+activity in each target OpenCode release before distributing the plugin.
