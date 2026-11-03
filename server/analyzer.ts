@@ -1,5 +1,5 @@
 import type { LogEvent } from "./log-receiver.js";
-import { OUTCOME_TOOL_ID } from "../plugin/shared/tracing.js";
+import { OUTCOME_HINT_METADATA, OUTCOME_TOOL_ID } from "../plugin/shared/tracing.js";
 
 export interface SessionSummary {
   sessionID: string;
@@ -42,6 +42,18 @@ function asObject(value: unknown): Record<string, unknown> | undefined {
 
 function nonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function successfulResult(data: Record<string, unknown> | undefined, callID: string): unknown {
+  const result = data?.["result"];
+  if (result !== undefined && result !== null) return result;
+  const content = data?.["content"] ?? data?.["output"] ?? null;
+  const hint = asObject(asObject(data?.["metadata"])?.[OUTCOME_HINT_METADATA]);
+  if (Array.isArray(content) && hint?.["callID"] === callID && typeof hint["text"] === "string") {
+    const last = asObject(content.at(-1));
+    if (last?.["type"] === "text" && last["text"] === hint["text"]) return content.slice(0, -1);
+  }
+  return content;
 }
 
 /** Accumulates queryable metadata from the stream of received log events. */
@@ -188,7 +200,7 @@ export class SessionAnalyzer {
       execution.completedAt = now;
       execution.result = tag === "session.tool.failed"
         ? { error: data?.["error"] ?? null, content: data?.["content"] ?? null }
-        : data?.["result"] ?? data?.["content"] ?? data?.["output"] ?? null;
+        : successfulResult(data, callID);
     }
   }
 

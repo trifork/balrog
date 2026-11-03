@@ -207,6 +207,8 @@ test("V2 subscribes to native events and records them without modifying them", a
     options: {},
     tool: { transform: async () => ({ dispose: async () => {} }) },
     session: { hook: async () => ({ dispose: async () => {} }) },
+    skill: { transform: async () => ({ dispose: async () => {} }) },
+    command: { transform: async () => ({ dispose: async () => {} }) },
     event: {
       async *subscribe(options: { types: string[]; signal: AbortSignal }) {
         assert.deepEqual(options.types, subscribedTypes);
@@ -257,6 +259,8 @@ test("V2 plugin options configure the log endpoint and log path", async (t) => {
     options: { logEndpoint, logPath },
     tool: { transform: async () => ({ dispose: async () => {} }) },
     session: { hook: async () => ({ dispose: async () => {} }) },
+    skill: { transform: async () => ({ dispose: async () => {} }) },
+    command: { transform: async () => ({ dispose: async () => {} }) },
     event: {
       async *subscribe() {},
     },

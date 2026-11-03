@@ -266,6 +266,45 @@ tool executions returns its ID and an empty array. There is no score or separate
 table page. The endpoint exposes the same sensitive arguments and outputs as
 the event feed and is intended for local use.
 
+### Review a session with /retro
+
+The V2 plugin registers the bundled `retro` skill and a slash command:
+
+```text
+/retro
+/retro ses_example
+```
+
+Without an ID, `/retro` reviews the calling session, not the most recently active
+session in Balrog. With an ID, it reviews that session while keeping the
+conversation in the caller's session. The command attaches the skill explicitly
+and captures a cutoff so the review does not grade its own activity.
+
+The skill fetches the execution JSON and presents it by `startedAt` ascending.
+Its default table contains a numeric `id` (1, 2, 3, ...), command, reason,
+outcome, improvement, complexity, and gain. Recorded reasons and outcomes remain
+verbatim; optional improvements have `LOW`, `MEDIUM`, or `HIGH` complexity and
+expected gain. Timestamps and raw Balrog call IDs are shown only when requested.
+A separate table covers higher-level improvements with evidence referring to
+the numbered calls and a concrete validation plan.
+
+Examples cover `AGENTS.md` task-routing instructions, links to verified code
+examples, feature-local documentation, generated navigation aids, and justified
+file or module restructuring. The review considers dependent calls together and
+does not treat an honest intermediate finding as a failed investigation. It
+assesses the completed trace without requiring the original agent to resume or
+revise earlier reports.
+
+This is a read-only retrospective. It proposes changes and validation steps;
+applying them requires separate approval. Balrog must be reachable at
+`http://localhost:5002` unless the user supplies another endpoint. If the session
+is missing, the skill reports that instead of choosing another session.
+
+The source is `skills/retro/SKILL.md`; its portable Node helper is
+`skills/retro/scripts/fetch-session.mjs`. Reload the plugin after updating the
+bundled skill. Other compatible harnesses can load the same skill directory;
+they must supply a current OpenCode session ID or ask for one when unavailable.
+
 ### Capture explicit tool intent
 
 The V2 plugin instruments tool definitions with a required `__balrogReason`
@@ -311,6 +350,17 @@ for each call before its next action or final response. For example:
   "outcome": "Found MyDemoService as an example service."
 }
 ```
+
+Successful tool responses also include a compact, model-visible footer with the
+actual `callID`, its reason, and the reporting call to make. The agent can use
+that ID directly without a lookup tool. The wrapper does not mutate the
+original executor's result object. The endpoint removes the extra footer only
+when its exact text and call ID match the wrapper's tracing metadata, leaving
+the original result content as evidence.
+
+Pending-call instructions work when the reporter is directly exposed or is
+reachable through Code Mode's `execute` tool. Failed calls keep their original
+errors; their IDs are supplied through those automatic instructions.
 
 In Code Mode, call `tools.balrog.reportOutcome({ callID, outcome })`. The
 reporting invocation must not contain unrelated work. The reporting tool does

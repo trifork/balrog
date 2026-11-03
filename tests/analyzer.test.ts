@@ -218,3 +218,23 @@ test("analyzer attaches replayed outcomes by session and call ID and hides repor
   }));
   assert.equal(executions[0].outcome, "Found MyDemoService.");
 });
+
+test("analyzer removes only the footer attested by metadata for the matching call", () => {
+  const analyzer = new SessionAnalyzer();
+  const content = [
+    { type: "text", text: "MyDemoService.cs" },
+    { type: "text", text: "Balrog outcome reporting: call-1" },
+  ];
+  for (const [id, metadata] of [
+    ["call-1", { __balrogOutcomeHint: { callID: "call-1", text: content[1].text } }],
+    ["call-2", { __balrogOutcomeHint: { callID: "call-1", text: content[1].text } }],
+    ["call-3", {}],
+  ] as const) {
+    analyzer.process(timedEvent("session.tool.success", "session-1", 100, { id, content, metadata }));
+  }
+  const calls = new Map(analyzer.getToolExecutions("session-1").map((call) => [call.callID, call]));
+  assert.deepEqual(calls.get("call-1")?.result, [content[0]]);
+  assert.deepEqual(calls.get("call-2")?.result, content);
+  assert.deepEqual(calls.get("call-3")?.result, content);
+  assert.equal(content.length, 2);
+});

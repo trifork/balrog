@@ -60,11 +60,14 @@ async function setup(t: TestContext, execute: Info["execute"] = async () => ({
       return { dispose: async () => {} };
     } },
     event: { async *subscribe() {} },
+    skill: { transform: async () => ({ dispose: async () => {} }) },
+    command: { transform: async () => ({ dispose: async () => {} }) },
   } as unknown as Plugin.Context;
   const dispose = await v2.setup(pluginContext);
   t.after(async () => { if (typeof dispose === "function") await dispose(); });
-  const modelRequest = (sessionID = "session-1") => {
-    const event = { sessionID, system: [], tools: Object.fromEntries([...tools].map(([id, tool]) => [id, {
+  const modelRequest = (sessionID = "session-1", codeModeOnly = false) => {
+    const available = [...tools].filter(([, tool]) => !codeModeOnly || tool.options?.codemode !== true);
+    const event = { sessionID, system: [], tools: Object.fromEntries(available.map(([id, tool]) => [id, {
       description: tool.description, input: tool.input,
     }])) } as unknown as SessionContext;
     for (const hook of hooks) hook(event);
@@ -83,7 +86,7 @@ test("agent can report a completed call's outcome without replacing its raw resu
   }, contextFor("call-1"));
   analyzer.process({
     tag: "session.tool.success", sessionID: "session-1", pluginID: "test", apiVersion: "v2",
-    "session.tool.success": { created: 100, data: { id: "call-1", content: result.content } },
+    "session.tool.success": { created: 100, data: { id: "call-1", content: result.content, metadata: result.metadata } },
   } as unknown as LogEvent);
   const instructions = modelRequest();
   assert.match(instructions, /balrog_reportOutcome/);
@@ -97,6 +100,29 @@ test("agent can report a completed call's outcome without replacing its raw resu
   assert.equal(records.filter((event) => event.tag === "balrog.tool.outcome").length, 1);
   assert.doesNotMatch(modelRequest(), /call-1|report-1/);
   assert.doesNotMatch(JSON.stringify(reporter.input), /__balrogReason/);
+});
+
+test("Code Mode requests receive pending call IDs even when the reporter is not directly exposed", async (t) => {
+  const { tools, modelRequest } = await setup(t);
+  await tools.get("glob")!.execute({
+    pattern: "*.cs", __balrogReason: "Find an example service",
+  }, contextFor("call-with-hidden-id"));
+  const instructions = modelRequest("session-1", true);
+  assert.match(instructions, /call-with-hidden-id/);
+  assert.match(instructions, /tools\.balrog\.reportOutcome/);
+});
+
+test("completed tool results expose their call IDs and reporting instructions without another lookup call", async (t) => {
+  const { tools } = await setup(t);
+  const result = await tools.get("glob")!.execute({
+    pattern: "*.cs", __balrogReason: "Find an example service",
+  }, contextFor("call-visible-to-agent"));
+  assert.ok(Array.isArray(result.content));
+  const texts = result.content.filter((part) => part.type === "text").map((part) => part.text);
+  assert.equal(texts[0], "MyDemoService.cs");
+  assert.match(texts.at(-1)!, /call-visible-to-agent/);
+  assert.match(texts.at(-1)!, /tools\.balrog\.reportOutcome/);
+  assert.match(texts.at(-1)!, /Find an example service/);
 });
 
 test("outcome reports reject blank values, unknown calls, other sessions and unfinished calls", async (t) => {
@@ -155,6 +181,7 @@ test("failed calls retain their original errors and are prompted for an honest o
     pattern: "**/*Service.cs", __balrogReason: "Find an example service.",
   }, contextFor("call-1")), (error) => error === failure);
   assert.match(modelRequest(), /"status":"error"/);
+  assert.match(modelRequest("session-1", true), /call-1/);
   assert.equal(analyzer.getToolExecutions("session-1")[0].outcome, null);
   await tools.get("balrog_reportOutcome")!.execute({
     callID: "call-1", outcome: "Could not find a service because the directory was unavailable.",

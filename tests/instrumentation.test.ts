@@ -46,6 +46,8 @@ test("V2 requires explicit tool intent, records it per call and passes only orig
       },
     },
     session: { hook: async () => ({ dispose: async () => {} }) },
+    skill: { transform: async () => ({ dispose: async () => {} }) },
+    command: { transform: async () => ({ dispose: async () => {} }) },
     event: { async *subscribe() {} },
   } as unknown as Plugin.Context;
   const dispose = await v2.setup(context);
@@ -54,10 +56,24 @@ test("V2 requires explicit tool intent, records it per call and passes only orig
   const schema = tool.input as Record<string, any>;
   assert.deepEqual(schema.required, ["path", "__balrogReason"]);
   assert.equal(schema.properties.__balrogReason.type, "string");
+  const reasonDescription = schema.properties.__balrogReason.description as string;
+  assert.match(reasonDescription, /State what this specific call will inspect or change/);
+  assert.match(reasonDescription, /Distinguish selection from verification/);
+  assert.match(reasonDescription, /describe it as a candidate and name what remains to be verified/);
+  assert.match(reasonDescription, /Do not imply a search, comparison, or established property/);
+  assert.match(reasonDescription, /that prior evidence does not support/);
+  assert.ok(reasonDescription.includes('Misleading: "Find a small command to use as an implementation example."'));
+  assert.ok(reasonDescription.includes("Call: list Commands/Urls."));
+  assert.ok(reasonDescription.includes('Precise: "Inspect the selected Urls folder for a candidate command example; its size and suitability are not yet verified."'));
+  assert.ok(tool.description.includes(reasonDescription));
   assert.deepEqual(originalSchema.properties, { path: { type: "string" } });
   assert.deepEqual(tool.options, { permission: "read", codemode: true });
   const args = { path: "README.md", __balrogReason: "Read the setup instructions before changing installation." };
-  assert.equal(await tool.execute(args, callContext), result);
+  const annotated = await tool.execute(args, callContext);
+  assert.ok(Array.isArray(annotated.content));
+  assert.deepEqual(annotated.content[0], { type: "text", text: "File contents" });
+  assert.equal(annotated.metadata?.lines, 10);
+  assert.deepEqual(result, { content: "File contents", metadata: { lines: 10 } });
   assert.deepEqual(inputs, [{ path: "README.md" }]);
   assert.equal(args.__balrogReason, "Read the setup instructions before changing installation.");
   for (const reason of [undefined, null, "", " \n\t", 42]) {
@@ -114,6 +130,8 @@ test("instrumentation preserves Effect tool parameters and delegates validation,
       return { dispose: async () => {} };
     } },
     session: { hook: async () => ({ dispose: async () => {} }) },
+    skill: { transform: async () => ({ dispose: async () => {} }) },
+    command: { transform: async () => ({ dispose: async () => {} }) },
     event: { async *subscribe() {} },
   } as unknown as Plugin.Context;
   const dispose = await v2.setup(context);
@@ -166,6 +184,8 @@ test("instrumentation extends closed referenced and standard schemas without cha
       return { dispose: async () => {} };
     } },
     session: { hook: async () => ({ dispose: async () => {} }) },
+    skill: { transform: async () => ({ dispose: async () => {} }) },
+    command: { transform: async () => ({ dispose: async () => {} }) },
     event: { async *subscribe() {} },
   } as unknown as Plugin.Context;
   const dispose = await v2.setup(context);

@@ -1,0 +1,6 @@
+schema_version: "1.1"
+name: current-session
+expected_outcome: |
+  The review uses the current session ID from trusted runtime or command context,
+  not Balrog's latest session. If no current session ID is available, it asks for
+  that ID instead of guessing. It does not modify repository files or Balrog data.

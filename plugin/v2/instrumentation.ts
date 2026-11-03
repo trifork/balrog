@@ -3,10 +3,20 @@ import { Error as ToolError, type Info } from "@opencode/plugin/promise/tool";
 import { Schema } from "effect";
 import type { Recorder } from "../shared/recorder.js";
 import { OUTCOME_TOOL_ID } from "../shared/tracing.js";
-import type { ToolLifecycleObserver } from "./outcomes.js";
+import { withOutcomeHint, type ToolLifecycleObserver } from "./outcomes.js";
 
 export const REASON_FIELD = "__balrogReason";
-const REASON_DESCRIPTION = "Briefly state why this call is needed and what result you expect. Give the action's purpose, not private reasoning.";
+const REASON_DESCRIPTION = [
+  "Briefly state why this call is needed and what result you expect. Give the action's purpose, not private reasoning.",
+  "State what this specific call will inspect or change, not the broader task goal.",
+  "Distinguish selection from verification: if you have already selected a target based on a guess, describe it as a candidate and name what remains to be verified.",
+  "Do not imply a search, comparison, or established property that the call does not perform or that prior evidence does not support.",
+  "",
+  "Contrasting example:",
+  'Misleading: "Find a small command to use as an implementation example."',
+  "Call: list Commands/Urls.",
+  'Precise: "Inspect the selected Urls folder for a candidate command example; its size and suitability are not yet verified."',
+].join("\n");
 
 type ObjectSchema = Record<string, unknown>;
 
@@ -120,8 +130,8 @@ export async function instrumentTools(
           outcomes?.started(call);
           try {
             const result = await execute(args, context);
-            outcomes?.completed({ ...call, status: "completed" });
-            return result;
+            const needsOutcome = outcomes?.completed({ ...call, status: "completed" });
+            return needsOutcome ? withOutcomeHint(result, call) : result;
           } catch (error) {
             outcomes?.completed({ ...call, status: "error" });
             throw error;

@@ -2,6 +2,7 @@ import { Plugin } from "@opencode/plugin";
 import { Recorder } from "../shared/recorder.js";
 import { instrumentTools } from "./instrumentation.js";
 import { registerOutcomeReporting } from "./outcomes.js";
+import { registerRetro } from "./retro.js";
 
 export default Plugin.define({
   id: "opencode-balrog",
@@ -19,6 +20,7 @@ export default Plugin.define({
 
     const outcomes = await registerOutcomeReporting(ctx, recorder);
     await instrumentTools(ctx, recorder, outcomes);
+    await registerRetro(ctx);
 
     const controller = new AbortController();
     const consume = (async () => {
