@@ -9,6 +9,6 @@ const paths = {
   panel: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 4v16" /></>,
 };
 
-export function Icon({ name }: { name: keyof typeof paths }) {
-  return <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
+export function Icon({ name, className = "size-[18px]" }: { name: keyof typeof paths; className?: string }) {
+  return <svg className={`shrink-0 fill-none stroke-current stroke-[1.7] [stroke-linecap:round] [stroke-linejoin:round] ${className}`} viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
 }
