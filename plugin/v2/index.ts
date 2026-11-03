@@ -19,29 +19,14 @@ export default Plugin.define({
     const consume = (async () => {
       try {
         for await (const event of ctx.event.subscribe({
-          types: [
-            "permission.asked",
-            "permission.replied",
-            "session.created",
-            "session.execution.failed",
-            "session.execution.started",
-            "session.execution.succeeded",
-            "session.inbox.delivered",
-            "session.inbox.enqueued",
-            "session.renamed",
-            "session.revert.cleared",
-            "session.revert.committed",
-            "session.revert.staged",
-            "session.text.ended",
-            "session.text.started",
-            "session.tool.called",
-            "session.tool.input.started",
-            "session.tool.failed",
-            "session.tool.success",
-          ],
           signal: controller.signal,
         })) {
-          await recorder.record(event.type, event.data.sessionID, event);
+          const sessionID =
+            "sessionID" in event.data &&
+            typeof event.data.sessionID === "string"
+              ? event.data.sessionID
+              : null;
+          await recorder.record(event.type, sessionID, event);
         }
       } catch (error) {
         if (!controller.signal.aborted) throw error;

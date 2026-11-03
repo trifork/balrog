@@ -192,34 +192,14 @@ test("V2 subscribes to native events and records them without modifying them", a
     },
   ];
   const snapshots = structuredClone(events);
-  const subscribedTypes = [
-    "permission.asked",
-    "permission.replied",
-    "session.created",
-    "session.execution.failed",
-    "session.execution.started",
-    "session.execution.succeeded",
-    "session.inbox.delivered",
-    "session.inbox.enqueued",
-    "session.renamed",
-    "session.revert.cleared",
-    "session.revert.committed",
-    "session.revert.staged",
-    "session.text.ended",
-    "session.text.started",
-    "session.tool.called",
-    "session.tool.input.started",
-    "session.tool.failed",
-    "session.tool.success",
-  ];
   let subscriptionSignal: AbortSignal | undefined;
   const context = {
     app: { version: "2.2.0" },
     location: { directory: "C:/project", project: { id: "project-1" } },
     options: {},
     event: {
-      async *subscribe(options: { types: string[]; signal: AbortSignal }) {
-        assert.deepEqual(options.types, subscribedTypes);
+      async *subscribe(options: { types?: string[]; signal: AbortSignal }) {
+        assert.equal(options.types, undefined);
         subscriptionSignal = options.signal;
         for (const event of events) {
           yield event;
