@@ -1,5 +1,7 @@
 import { Plugin } from "@opencode/plugin";
 import { Recorder } from "../shared/recorder.js";
+import { instrumentTools } from "./instrumentation.js";
+import { registerOutcomeReporting } from "./outcomes.js";
 
 export default Plugin.define({
   id: "opencode-balrog",
@@ -14,6 +16,9 @@ export default Plugin.define({
         version: ctx.app.version,
       },
     });
+
+    const outcomes = await registerOutcomeReporting(ctx, recorder);
+    await instrumentTools(ctx, recorder, outcomes);
 
     const controller = new AbortController();
     const consume = (async () => {
@@ -31,6 +36,7 @@ export default Plugin.define({
             "session.text.started",
             "session.tool.called",
             "session.tool.failed",
+            "session.tool.input.started",
             "session.tool.success",
           ],
           signal: controller.signal,

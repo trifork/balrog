@@ -35,7 +35,37 @@ type OpenCodeEventLog<Event extends OpenCodeEvent = OpenCodeEvent> =
 
 type EventLogEvent = OpenCodeEventLog;
 
-export type LogEvent = InitPluginEvent | EventLogEvent;
+export interface ToolIntentLog extends LogMetadata {
+  tag: "balrog.tool.intent";
+  "balrog.tool.intent": {
+    type: "balrog.tool.intent";
+    created: number;
+    data: {
+      sessionID: string;
+      assistantMessageID: string;
+      id: string;
+      tool: string;
+      reason: string;
+    };
+  };
+}
+
+export interface ToolOutcomeLog extends LogMetadata {
+  tag: "balrog.tool.outcome";
+  "balrog.tool.outcome": {
+    type: "balrog.tool.outcome";
+    created: number;
+    data: {
+      sessionID: string;
+      assistantMessageID: string;
+      id: string;
+      reportCallID: string;
+      outcome: string;
+    };
+  };
+}
+
+export type LogEvent = InitPluginEvent | EventLogEvent | ToolIntentLog | ToolOutcomeLog;
 export type LogEventListener = (event: LogEvent) => void;
 
 /** Receives log events over HTTP and publishes each valid event to subscribers. */
