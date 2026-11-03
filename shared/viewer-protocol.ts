@@ -8,6 +8,7 @@ export interface ViewerMessage {
   id: number;
   event: LogEvent;
   fileActivity?: PromptActivity;
+  fileActivityUpdates?: PromptActivity[];
   content?: string;
   command?: string;
   sessionTitle?: string;

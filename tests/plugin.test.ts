@@ -178,6 +178,18 @@ test("V2 subscribes to native events and records them without modifying them", a
         text: "hello", role: "user",
       },
     },
+    {
+      type: "session.revert.staged",
+      data: { sessionID: "session-1", revert: { messageID: "message-2", files: [] } },
+    },
+    {
+      type: "session.revert.cleared",
+      data: { sessionID: "session-1" },
+    },
+    {
+      type: "session.revert.committed",
+      data: { sessionID: "session-1", to: "message-2" },
+    },
   ];
   const snapshots = structuredClone(events);
   const subscribedTypes = [
@@ -190,6 +202,9 @@ test("V2 subscribes to native events and records them without modifying them", a
     "session.inbox.delivered",
     "session.inbox.enqueued",
     "session.renamed",
+    "session.revert.cleared",
+    "session.revert.committed",
+    "session.revert.staged",
     "session.text.ended",
     "session.text.started",
     "session.tool.called",

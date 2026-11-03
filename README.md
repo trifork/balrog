@@ -209,6 +209,8 @@ a viewer-local numeric ID alongside the original event envelope and display
 metadata. The native event is not modified. Reconnecting requests a fresh
 snapshot and replaces the feed, avoiding duplicate events. The old `/events`
 SSE endpoint is no longer available. WebSocket requests do not control OpenCode.
+File-tree state is attached as `fileActivity`; when one event affects several
+prompts, additional prompt snapshots are included in `fileActivityUpdates`.
 
 The dashboard shows live event, session, and tool-call counts. Choose a session
 in the sidebar, search event content or commands, and filter by event type to
@@ -220,6 +222,22 @@ for the latest prompt in the selected session (or across all sessions). Choose a
 following; **Follow latest** resumes it. File badges distinguish reads, edits,
 writes, additions, and deletions. Writes may create or overwrite a file. Pending
 and failed tool attempts stay visible but do not count as confirmed changes.
+Undone changes include **(Reverted)** in their action badge, such as
+**Edit (Reverted)** or **Write (Reverted)**, instead of a separate badge.
+Reverted changes no longer count as confirmed changes; any still-active changes
+to the same file retain their normal badges and continue to count. The viewer
+uses OpenCode V2's explicit `session.revert.staged`, `session.revert.cleared`,
+and `session.revert.committed` events to track undo, redo, and committed
+reversions. It also recognizes successful `edit`/`multiedit` replacements and
+`patch`/`apply_patch` hunks that reverse earlier recorded changes, even without
+a native revert event. This supports prompts such as "make a small change and
+then revert it again" and works when replaying existing recordings. Matching
+requires recorded before/after text and context; unknown or intervening changes
+are not guessed. Git status, Git restores, and shell-script cleanup do not mark
+changes reverted. Undo can update an earlier prompt without switching the selected prompt. The
+badge applies to recorded edits, not proof that the whole file matches its
+original contents. Restorations without the required recorded evidence are not
+detected; the viewer never checks the current filesystem to rewrite history.
 The tree contains observed files only, not a full workspace inventory.
 File tools accept `path`, `filePath`, and `file_path` arguments. Reads that return
 an explicit directory listing are excluded from the file count.
@@ -227,7 +245,9 @@ an explicit directory listing are excluded from the file count.
 The viewer recognizes V1 prompt/tool hooks and V2 delivered user prompts and
 file-tool events, including multi-file `patch` and `apply_patch` calls. V2 also records
 `session.inbox.enqueued`, `session.inbox.delivered`, and
-`session.tool.input.started` to capture prompt text and tool names. Reload the
+`session.tool.input.started` to capture prompt text and tool names, plus
+`session.revert.staged`, `session.revert.cleared`, and `session.revert.committed`
+to track undo and redo. Reload the
 V2 plugin after updating it. Older recordings without prompt events use labeled
 execution groups; missing prompt boundaries are labeled unattributed. Shell
 commands, search results, and diffs are not inferred. Calls belong to the prompt

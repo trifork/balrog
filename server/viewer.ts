@@ -10,6 +10,7 @@ import type { LogEvent } from "./log-receiver.js";
 interface RetainedEvent {
   event: LogEvent;
   fileActivity?: PromptActivity;
+  fileActivityUpdates?: PromptActivity[];
 }
 
 export class LogViewer {
@@ -128,7 +129,8 @@ export class LogViewer {
   }
 
   publish(event: LogEvent): void {
-    const entry = { event, fileActivity: this.fileActivity.process(event) };
+    const [fileActivity, ...updates] = this.fileActivity.processAll(event);
+    const entry = { event, fileActivity, fileActivityUpdates: updates.length ? updates : undefined };
     this.events.push(entry);
     if (!this.subscribers.size) return;
     const message = this.message(entry, this.events.length);
@@ -156,12 +158,13 @@ export class LogViewer {
     if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(response));
   }
 
-  private message({ event, fileActivity }: RetainedEvent, id: number): ViewerMessage {
+  private message({ event, fileActivity, fileActivityUpdates }: RetainedEvent, id: number): ViewerMessage {
     const sessionID = this.analyzer.getSessionID(event);
     return {
       id,
       event,
       fileActivity,
+      fileActivityUpdates,
       content: eventContent(event),
       command: this.analyzer.getToolCall(event)?.command?.split(/\r?\n/, 1)[0],
       sessionTitle: sessionID ? this.analyzer.getSessionTitle(sessionID) : undefined,

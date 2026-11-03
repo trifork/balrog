@@ -198,6 +198,41 @@ test("snapshots replay all 600 events and repeat without mutating retained histo
   assert.deepEqual(await request(reconnected, { type: "snapshot.request" }), first);
 });
 
+test("native undo and redo push updates for all affected prompts and survive reconnects", { timeout: 5_000 }, async (t) => {
+  const { connect, publish } = await startViewer(t);
+  for (const index of [1, 2]) {
+    publish("session.prompt", { text: `Prompt ${index}`, messageID: `user-${index}` });
+    publish("session.tool.called", { id: `c${index}`, tool: "edit", input: { path: `src/file${index}.ts` } });
+    publish("session.tool.success", { id: `c${index}` });
+  }
+  const socket = await connect();
+  const original = await request(socket, { type: "snapshot.request" });
+  assert.equal(original.type, "snapshot");
+  const pushed = once(socket, "message");
+  publish("session.revert.staged", { revert: { messageID: "user-1" } });
+  const [data] = await pushed;
+  const live: ViewerResponse = JSON.parse(String(data));
+  assert.equal(live.type, "event");
+  if (live.type !== "event") return;
+  const updates = [live.message.fileActivity!, ...live.message.fileActivityUpdates ?? []];
+  assert.equal(updates.length, 2);
+  assert.ok(updates.every((prompt) => prompt.files[0].reverted));
+  const reconnected = await connect();
+  const snapshot = await request(reconnected, { type: "snapshot.request" });
+  assert.equal(snapshot.type, "snapshot");
+  if (snapshot.type !== "snapshot" || original.type !== "snapshot") return;
+  assert.deepEqual(snapshot.events.at(-1), live.message);
+  assert.equal(original.events[2].fileActivity?.files[0].reverted, undefined);
+  const cleared = once(socket, "message");
+  publish("session.revert.cleared");
+  const [clearedData] = await cleared;
+  const redo: ViewerResponse = JSON.parse(String(clearedData));
+  assert.equal(redo.type, "event");
+  if (redo.type !== "event") return;
+  assert.equal(redo.message.fileActivity?.files[0].reverted, undefined);
+  assert.equal(redo.message.fileActivityUpdates?.[0].files[0].reverted, undefined);
+});
+
 test("invalid requests return errors, and only requested subscriptions receive events", { timeout: 5_000 }, async (t) => {
   const { connect, publish } = await startViewer(t);
   const socket = await connect();
