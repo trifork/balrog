@@ -242,6 +242,15 @@ export class SessionAnalyzer {
     return this.toolCalls.get(this.toolCallKey(sessionID, callID));
   }
 
+  getToolExecution(event: LogEvent): ToolExecution | undefined {
+    const tag = event.tag;
+    const payload = asObject((event as unknown as Record<string, unknown>)[tag]);
+    const nativeEvent = asObject(payload?.["event"]) ?? payload;
+    const sessionID = this.getSessionID(event);
+    const callID = this.getCallID(asObject(nativeEvent?.["data"]));
+    return sessionID && callID ? this.executions.get(sessionID)?.get(callID) : undefined;
+  }
+
   private extractTitle(
     tag: string,
     data: Record<string, unknown> | undefined,

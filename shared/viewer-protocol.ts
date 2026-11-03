@@ -1,4 +1,4 @@
-import type { SessionSummary } from "../server/analyzer.js";
+import type { SessionSummary, ToolExecution } from "../server/analyzer.js";
 import type { PromptActivity } from "../server/file-activity.js";
 import type { LogEvent } from "../server/log-receiver.js";
 import type { PendingPermission, PermissionReply } from "./permission-protocol.js";
@@ -12,6 +12,7 @@ export interface ViewerMessage {
   fileActivityUpdates?: PromptActivity[];
   content?: string;
   command?: string;
+  execution?: ToolExecution;
   sessionTitle?: string;
   session?: SessionSummary;
 }

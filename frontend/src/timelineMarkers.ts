@@ -12,6 +12,8 @@ export interface TimelineMarker {
   summary: string;
   isPrompt: boolean;
   promptNumber?: string;
+  reason?: string | null;
+  outcome?: string | null;
 }
 
 const icons: Record<TimelineIcon, { label: string; color: string }> = {
@@ -89,11 +91,11 @@ function describeEvent(message: ReceivedEvent) {
   const data = object(nativeEvent?.data) ?? nativeEvent ?? {};
   const input = object(data.input);
   const output = object(data.output);
-  const args = object(data.args) ?? object(input?.args) ?? object(output?.args) ?? input ?? {};
+  const args = object(message.execution?.command.args) ?? object(data.args) ?? object(input?.args) ?? object(output?.args) ?? input ?? {};
   const native = object(data.native);
   const result = object(data.result);
   const metadata = object(data.metadata) ?? object(result?.metadata) ?? object(output?.metadata);
-  const tool = text(data.tool, data.name, input?.tool, native?.tool, native?.name);
+  const tool = text(data.tool, data.name, input?.tool, native?.tool, native?.name, message.execution?.command.name);
   const toolName = tool?.split(/__|[./:]/).at(-1)?.toLowerCase().replace(/[-_\s]/g, "");
   const isTool = /(?:^|\.)tool(?:\.|$)/i.test(tag);
   const isFile = /(?:^|\.)(?:file|filesystem)(?:\.|$)/i.test(tag);
@@ -142,4 +144,57 @@ export function timelineMarkers(events: ReceivedEvent[], prompts: ActivityPrompt
       : kind === "prompt" ? "#b7a0e9" : kind === "success" ? "#8acba4" : "#686a75";
     return { icon, label, color, isPrompt, promptNumber: number, summary: boundary?.prompt.activity.text ?? summary ?? tag.replace(/[._-]+/g, " ").replace(/^./, (letter) => letter.toUpperCase()) };
   });
+}
+
+const executionKey = (message: ReceivedEvent) => JSON.stringify([
+  message.session?.sessionID ?? message.event.sessionID, message.execution?.callID,
+]);
+
+/** Recognize only literal reports; unfamiliar JavaScript remains work evidence. */
+function isReportingOnly(execution: NonNullable<ReceivedEvent["execution"]>) {
+  const name = execution.command.name?.split(/[./:]|__/).at(-1);
+  if (name === "balrog_reportOutcome" || execution.command.name === "balrog_reportOutcome") return true;
+  if (name !== "execute") return false;
+  const code = object(execution.command.args)?.code;
+  if (typeof code !== "string") return false;
+  const reports = code.replace(/tools\.balrog(?:\.reportOutcome|\["reportOutcome"\])\s*\(\s*(\{(?:[^"{}]|"(?:\\.|[^"\\])*")*\})\s*\)/g, (call, args: string) => {
+    try {
+      const report = object(JSON.parse(args));
+      return typeof report?.callID === "string" && typeof report.outcome === "string" && Object.keys(report).length === 2 ? "REPORT" : call;
+    } catch {
+      return call;
+    }
+  });
+  return /^\s*(?:return\s+)?(?:await\s+)?(?:REPORT|Promise\.all\(\[\s*REPORT(?:\s*,\s*REPORT)*\s*,?\s*\]\))\s*;?\s*$/.test(reports);
+}
+
+/** Prompt boundaries and one marker per command, enriched from even out-of-scope outcome events. */
+export function commandTimeline(source: ReceivedEvent[], evidence: ReceivedEvent[] = source, prompts: ActivityPrompt[] = collectActivity(source, "")) {
+  const latest = new Map<string, NonNullable<ReceivedEvent["execution"]>>();
+  for (const message of evidence) {
+    if (message.execution) latest.set(executionKey(message), message.execution);
+  }
+  const seen = new Set<string>();
+  const boundaries = new Set(prompts.map((prompt) => prompt.startEventID));
+  const events = source.filter((message) => {
+    if (message.event.tag !== "session.tool.called" || !message.execution) return boundaries.has(message.id);
+    const key = executionKey(message);
+    if (isReportingOnly(latest.get(key) ?? message.execution)) return boundaries.has(message.id);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).map((message) => ({ ...message, execution: latest.get(executionKey(message)) ?? message.execution }))
+    .sort((left, right) => boundaries.size ? left.id - right.id : (left.execution?.startedAt ?? Infinity) - (right.execution?.startedAt ?? Infinity));
+  const markers = timelineMarkers(events, prompts).map((marker, index) => {
+    const execution = events[index].execution;
+    if (marker.isPrompt || !execution) return marker;
+    return {
+      ...marker,
+      label: execution.command.name ?? "Unknown command",
+      summary: JSON.stringify(execution.command.args, null, 2) ?? "null",
+      reason: execution.reason,
+      outcome: execution.outcome,
+    };
+  });
+  return { events, markers };
 }

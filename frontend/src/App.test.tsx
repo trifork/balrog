@@ -25,6 +25,16 @@ function message(id: number, tag: string, sessionID: string, content?: string): 
 const cards = () => within(screen.getByRole("region", { name: "Session events" })).queryAllByRole("article");
 const openEvents = async (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByText("Event stream", { selector: "summary span" }));
 
+function command(id: number, sessionID = "s1"): ReceivedEvent {
+  return {
+    ...message(id, "session.tool.called", sessionID, "npm test"), command: "npm test",
+    execution: {
+      callID: `call-${id}`, command: { name: "shell", args: { command: "npm test" } },
+      startedAt: id, completedAt: null, reason: "Run the tests.", outcome: null, result: null,
+    },
+  };
+}
+
 beforeEach(() => {
   window.history.replaceState(null, "", "/");
   vi.stubGlobal("matchMedia", vi.fn(() => ({
@@ -40,7 +50,7 @@ beforeEach(() => {
     ],
     events: [
       message(1, "session.text.ended", "s1", "Hello agent"),
-      { ...message(2, "session.tool.called", "s1", "npm test"), command: "npm test" },
+      command(2),
       message(3, "session.tool.failed", "s1"),
       message(4, "session.text.ended", "s2", "<img src=x onerror=alert(1)>"),
     ],
@@ -271,36 +281,37 @@ test("timeline scrubbing reveals the event drawer and Go live restores incoming 
   const { rerender } = render(<App />);
   expect(screen.getByRole("heading", { name: "File heatmap" })).toBeTruthy();
   const slider = screen.getByRole("slider", { name: "Scrub to event" });
-  expect(slider.getAttribute("aria-valuenow")).toBe("4");
+  expect(slider.getAttribute("aria-valuenow")).toBe("1");
   fireEvent.keyDown(slider, { key: "Home" });
-  expect(cards()).toHaveLength(1);
-  expect(cards()[0].id).toBe("event-1");
+  expect(cards()).toHaveLength(2);
+  expect(cards()[0].id).toBe("event-2");
   expect(screen.getByText("Playback paused. New events are still being recorded.")).toBeTruthy();
   state = { ...state, events: [...state.events, message(5, "session.text.ended", "s1", "Newest")] };
   rerender(<App />);
-  expect(cards()).toHaveLength(1);
+  expect(cards()).toHaveLength(2);
   await user.click(screen.getByRole("button", { name: "Resume live playback" }));
   expect(cards()).toHaveLength(5);
-  expect(slider.getAttribute("aria-valuenow")).toBe("5");
+  expect(slider.getAttribute("aria-valuenow")).toBe("1");
   expect(screen.getByText("Events appear automatically. No refresh needed.")).toBeTruthy();
 });
 
 test("the event drawer can close during paused playback and reopen on another timeline selection", async () => {
   const user = userEvent.setup();
+  state.events.push(command(5));
   render(<App />);
   fireEvent.keyDown(screen.getByRole("slider", { name: "Scrub to event" }), { key: "Home" });
-  expect(cards()).toHaveLength(1);
+  expect(cards()).toHaveLength(2);
   await openEvents(user);
   expect(screen.queryByRole("region", { name: "Session events" })).toBeNull();
   fireEvent.keyDown(screen.getByRole("slider", { name: "Scrub to event" }), { key: "End" });
-  expect(cards()).toHaveLength(4);
+  expect(cards()).toHaveLength(5);
 });
 
 test("timeline follows session and related-event filters without hiding read approvals", async () => {
   const user = userEvent.setup();
   state.permissions = [{ pluginID: "p1", sessionID: "s1", requestID: "r1", resources: ["/project/appsettings.json"], status: "pending" }];
   state.events[0] = {
-    ...state.events[0],
+    ...command(1),
     fileActivity: {
       id: "1", sessionID: "s1", text: "Read a file",
       files: [{ path: "src/file.ts", action: "read", outcome: "success", callID: "1" }],
@@ -308,7 +319,7 @@ test("timeline follows session and related-event filters without hiding read app
   };
   render(<App />);
   await user.click(screen.getByRole("tab", { name: /First session/ }));
-  expect(screen.getByRole("slider", { name: "Scrub to event" }).getAttribute("aria-valuemax")).toBe("3");
+  expect(screen.getByRole("slider", { name: "Scrub to event" }).getAttribute("aria-valuemax")).toBe("2");
   await user.click(screen.getByRole("button", { name: "Inspect 1 related events" }));
   expect(cards()).toHaveLength(1);
   expect(screen.getByRole("slider", { name: "Scrub to event" }).getAttribute("aria-valuemax")).toBe("1");

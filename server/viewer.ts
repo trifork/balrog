@@ -214,6 +214,7 @@ export class LogViewer {
       fileActivityUpdates,
       content: eventContent(event),
       command: this.analyzer.getToolCall(event)?.command?.split(/\r?\n/, 1)[0],
+      execution: this.analyzer.getToolExecution(event),
       sessionTitle: sessionID ? this.analyzer.getSessionTitle(sessionID) : undefined,
       session: sessionID ? this.analyzer.getSession(sessionID) : undefined,
     };

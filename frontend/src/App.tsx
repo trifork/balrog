@@ -98,7 +98,7 @@ export function App() {
         </div>}
         <FileActivity events={events} sessions={sessions} selectedSession={selected} activityPrompts={prompts} activeEventID={activeEventID} cutoffEventID={followingLive ? undefined : activeEventID ?? 0} jumpRequest={jumpRequest} onPromptNavigate={navigatePrompt} />
       </main>
-      <footer className="viewer-timeline min-w-0 border-t border-line bg-frame" aria-label="Bottom bar"><Timeline events={timelineEvents} prompts={prompts} activeEventID={activeEventID} centerRequest={promptJump} onSelect={scrubToEvent} followingLive={followingLive} onToggleLive={toggleLive} /></footer>
+      <footer className="viewer-timeline min-w-0 border-t border-line bg-frame" aria-label="Bottom bar"><Timeline events={timelineEvents} evidenceEvents={events} prompts={prompts} activeEventID={activeEventID} centerRequest={promptJump} onSelect={scrubToEvent} followingLive={followingLive} onToggleLive={toggleLive} /></footer>
       <ReadWarning requests={permissions} live={status === "live"} />
     </div>
   );

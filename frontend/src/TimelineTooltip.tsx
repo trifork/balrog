@@ -9,9 +9,11 @@ interface Props {
   message: ReceivedEvent;
   marker: TimelineMarker;
   position: number;
+  onPointerEnter: () => void;
+  onPointerLeave: () => void;
 }
 
-export function TimelineTooltip({ anchorRef, message, marker, position }: Props) {
+export function TimelineTooltip({ anchorRef, message, marker, position, onPointerEnter, onPointerLeave }: Props) {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<{ left: number; top: number; arrowLeft: number } | null>(null);
 
@@ -48,11 +50,12 @@ export function TimelineTooltip({ anchorRef, message, marker, position }: Props)
       window.visualViewport?.removeEventListener("resize", place);
       window.visualViewport?.removeEventListener("scroll", place);
     };
-  }, [anchorRef, message.id, marker.label, marker.summary, position]);
+  }, [anchorRef, message.id, marker.label, marker.summary, marker.reason, marker.outcome, position]);
 
   return createPortal(
     <div ref={tooltipRef} id="timeline-summary" role="tooltip"
-      className="pointer-events-none fixed z-50 w-[340px] max-w-[calc(100vw-16px)] rounded-[9px] border border-[#45464d] bg-[#1d1e22] p-3 text-ink shadow-[0_8px_32px_#0008]"
+      onPointerEnter={onPointerEnter} onPointerLeave={onPointerLeave}
+      className="fixed z-50 w-[420px] max-w-[calc(100vw-16px)] max-h-[calc(100dvh-16px)] overflow-y-auto rounded-[9px] border border-[#45464d] bg-[#1d1e22] p-3 text-ink shadow-[0_8px_32px_#0008]"
       style={{ left: placement?.left ?? 0, top: placement?.top ?? 0, visibility: placement ? "visible" : "hidden", borderTopColor: marker.color }}>
       <div className="mb-1.5 flex min-w-0 items-center gap-2">
         <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[11px] font-medium" style={{ color: marker.color }}>
@@ -61,8 +64,11 @@ export function TimelineTooltip({ anchorRef, message, marker, position }: Props)
         </span>
         <time className="shrink-0 font-mono text-[9px] text-muted tabular-nums" dateTime={new Date(message.receivedAt).toISOString()}>{new Date(message.receivedAt).toLocaleTimeString()}</time>
       </div>
-      {marker.label !== message.event.tag && <div className="mb-1.5 truncate font-mono text-[9px] text-muted">{message.event.tag}</div>}
-      <p className="m-0 line-clamp-3 text-[11px] leading-[1.7] wrap-anywhere text-[#c7c7d0]">{marker.summary}</p>
+      {!marker.isPrompt && <dl className="m-0 space-y-2 text-[11px] leading-relaxed">
+        <div><dt className="font-medium text-muted">Reason</dt><dd className="m-0 whitespace-pre-wrap wrap-anywhere">{marker.reason ?? "null"}</dd></div>
+        <div><dt className="font-medium text-muted">Outcome</dt><dd className="m-0 whitespace-pre-wrap wrap-anywhere">{marker.outcome ?? "null"}</dd></div>
+      </dl>}
+      <pre className="m-0 mt-2 border-t border-line pt-2 font-mono text-[10px] leading-relaxed whitespace-pre-wrap wrap-anywhere text-[#c7c7d0]">{marker.summary}</pre>
       <span className="absolute -bottom-[5px] size-2 rotate-45 border-r border-b border-[#45464d] bg-[#1d1e22]" style={{ left: (placement?.arrowLeft ?? 12) - 4 }} aria-hidden="true" />
     </div>,
     document.body,

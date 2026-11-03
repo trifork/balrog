@@ -169,6 +169,28 @@ test("one server receives events and serves the live viewer", { timeout: 5_000 }
   assert.deepEqual(snapshot.events[0].event, event);
 });
 
+test("viewer streams the same command evidence as retro and refreshes it in snapshots", async (t) => {
+  const { publish, connect, origin } = await startViewer(t);
+  publish("session.tool.input.started", { id: "call-1", name: "read" });
+  publish("session.tool.called", { id: "call-1", input: { path: "README.md", __balrogReason: "Read the project overview." } });
+  const socket = await connect();
+  const snapshot = await request(socket, { type: "snapshot.request" });
+  assert.equal(snapshot.type, "snapshot");
+  if (snapshot.type !== "snapshot") return;
+  const recorded = (await (await fetch(`${origin}/api/tool-executions?session=session-viewer`)).json()).executions[0];
+  assert.deepEqual(snapshot.events[1].execution, recorded);
+
+  const incoming = once(socket, "message");
+  publish("balrog.tool.outcome", { callID: "call-1", outcome: "Found setup instructions.\nNo code changed." });
+  const live = JSON.parse(String((await incoming)[0])) as ViewerResponse;
+  assert.equal(live.type, "event");
+  if (live.type !== "event") return;
+  assert.equal(live.message.execution?.outcome, "Found setup instructions.\nNo code changed.");
+  const refreshed = await request(socket, { type: "snapshot.request" });
+  if (refreshed.type !== "snapshot") throw new Error("Expected snapshot");
+  assert.deepEqual(refreshed.events[1].execution, live.message.execution);
+});
+
 test("viewer serves built React assets and preserves the session HTTP API", { timeout: 5_000 }, async (t) => {
   const { origin, publish } = await startViewer(t);
   const page = await fetch(`${origin}/?session=session-viewer`);
