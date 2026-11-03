@@ -427,8 +427,8 @@ times last. Skill activations are listed separately in `skills`:
       "command": { "name": "shell", "args": { "command": "npm test" } },
       "startedAt": 1700000000000,
       "completedAt": 1700000001000,
-      "reason": "Run the tests to check the change.",
-      "outcome": "The tests passed; no regression was detected by this suite.",
+      "reason": null,
+      "outcome": null,
       "result": [{ "type": "text", "text": "All tests passed" }]
     }
   ],
@@ -453,17 +453,12 @@ times last. Skill activations are listed separately in `skills`:
   records `session.tool.called`, not the start of argument generation.
   `completedAt` is `null` until a success or failure is recorded. Partial logs
   can have a `null` start time or arguments.
-- `reason` uses the explicitly instrumented intent when present. For older
-  records, it falls back to an explicit recorded reason, an argument's
-  `description`, or the latest preceding assistant text in the same assistant
-  message and execution. Missing context returns `null`. These values are
-  recorded statements, not inferred or verified explanations.
+- `reason` and `outcome` preserve explicit historical annotations when present.
+  New passive recordings leave them `null`. The endpoint does not infer a
+  purpose from nearby commentary or a tool argument's `description`.
 - `result` preserves the recorded result or content. Failures return
   `{ "error": ..., "content": ... }`. Missing results return `null`.
-- `outcome` is the executing agent's report of what it learned or achieved
-  relative to the reason. It remains `null` until explicitly reported. Use it
-  for the table's human-readable result, and retain `result` as raw evidence.
-  Reporting-tool calls are excluded from the execution list.
+- Historical reporting-tool calls are excluded from the execution list.
 
 The additive `skills` array lists observed skill activations, newest first.
 It does not add fields or synthetic entries to `executions`:
@@ -499,6 +494,37 @@ session with no tool executions or skill activations returns its ID and empty
 arrays. There is no score or separate table page. The endpoint exposes the same
 sensitive arguments and outputs as the event feed and is intended for local use.
 
+### Query the recorded conversation
+
+Retrieve the entire recorded session and its tool executions in one request:
+
+```text
+GET http://localhost:5001/api/sessions/<encoded-session-id>/conversation
+GET http://localhost:5001/api/sessions/<encoded-session-id>/conversation?before=<unix-ms>
+```
+
+The JSON response contains `sessionID`, chronological raw `events`, chronological
+`executions`, and `recording` metadata. Events include recorded user prompts,
+assistant messages, tool arguments, results, errors, and compaction events.
+The optional `before` cutoff applies to all events, not just tool start times.
+Executions are reconstructed from that snapshot, so a result received after the
+cutoff does not appear on an earlier call. Equal timestamps retain receipt order.
+
+`recording` includes `source: "recorded-events"`, the cutoff, excluded-event and
+unknown-timestamp counts, evidence limits, and associated plugin initialization
+records in `contexts`. Events without a source or recorder timestamp remain in
+the snapshot, ordered last. Their relation to the cutoff is unknown.
+
+The session ID is required. An unknown session returns 404; malformed IDs and
+invalid cutoffs return 400. Responses use `Cache-Control: no-store`. This local
+endpoint exposes sensitive conversation content just like the existing event
+feed. It does not invoke a model or execute recorded commands.
+
+This is the conversation Balrog received, not a reconstruction of missing
+history. Messages from before recording, unavailable attachment contents, and
+unrecorded context cannot be recovered. Saved events replayed from SQLite are
+included, so OpenCode compaction does not remove previously recorded evidence.
+
 ### Review a session with /retro
 
 The V2 plugin registers the bundled `retro` skill and a slash command:
@@ -513,20 +539,31 @@ session in Balrog. With an ID, it reviews that session while keeping the
 conversation in the caller's session. The command attaches the skill explicitly
 and captures a cutoff so the review does not grade its own activity.
 
-The skill fetches the execution JSON and presents it by `startedAt` ascending.
-Its default table contains a numeric `id` (1, 2, 3, ...), command, reason,
-outcome, improvement, complexity, and gain. Recorded reasons and outcomes remain
-verbatim; optional improvements have `LOW`, `MEDIUM`, or `HIGH` complexity and
-expected gain. Timestamps and raw Balrog call IDs are shown only when requested.
-A separate table covers higher-level improvements with evidence referring to
-the numbered calls and a concrete validation plan.
+The skill retrieves one conversation snapshot and reads the entire chronological
+investigation. It assigns each call a reason and outcome after the fact, using
+the task, preceding discussion, arguments, and raw results. These are explicitly
+labeled retrospective assessments, not original agent reports. Unsupported
+purposes or results remain unknown; pending calls remain pending. Historical
+annotations are supporting evidence, not independently verified conclusions.
+
+The default call table contains a numeric `id` (1, 2, 3, ...), command, reason,
+and outcome. A separate table covers higher-level improvements with `LOW`,
+`MEDIUM`, or `HIGH` complexity and expected gain, supporting numbered calls,
+and a concrete validation plan. Timestamps and raw call IDs appear only on request.
+
+The model assesses all calls together in one analysis pass after retrieval.
+Neither the endpoint nor the helper makes model requests. The skill prohibits
+per-tool model requests or per-tool agents. Conversations too large for one
+context window can use at most three chronological analysis passes, including
+synthesis. If that cannot cover the evidence, the skill asks for a narrower
+range rather than silently dropping it. It discloses chunking and truncation.
 
 Examples cover `AGENTS.md` task-routing instructions, links to verified code
 examples, feature-local documentation, generated navigation aids, and justified
 file or module restructuring. The review considers dependent calls together and
 does not treat an honest intermediate finding as a failed investigation. It
-assesses the completed trace without requiring the original agent to resume or
-revise earlier reports.
+assesses the completed trace without requiring the original agent to supply
+reasons or outcomes. Assessments are report-only; source records are unchanged.
 
 This is a read-only retrospective. It proposes changes and validation steps;
 applying them requires separate approval. Balrog must be reachable at
@@ -538,86 +575,19 @@ The source is `skills/retro/SKILL.md`; its portable Node helper is
 bundled skill. Other compatible harnesses can load the same skill directory;
 they must supply a current OpenCode session ID or ask for one when unavailable.
 
-### Capture explicit tool intent
+### Passive recording
 
-The V2 plugin instruments tool definitions with a required `__balrogReason`
-argument. The agent must supply a short statement of the call's purpose and
-expected outcome. This requests an action description, not private reasoning.
+The V2 recorder subscribes to native session events without changing tool
+schemas, arguments, results, or model instructions. Tools no longer require
+`__balrogReason`. The live `balrog_reportOutcome` reporting tool and pending-call
+reminders have been removed. No reason/outcome bookkeeping adds model turns to
+the working session. The sensitive-file permission integration is unchanged.
 
-```json
-{
-  "path": "README.md",
-  "__balrogReason": "Read the setup instructions before changing installation."
-}
-```
+Reload the plugin and restart the viewer after updating. Existing saved intent
+and outcome events remain readable for historical compatibility. New assessments
+happen only when `/retro` is requested; there is no assessment write endpoint.
 
-The plugin rejects missing, blank, or non-string reasons before the underlying
-tool runs. It records a `balrog.tool.intent` event keyed by session ID and tool
-call ID, strips `__balrogReason`, and delegates to the original executor with
-its original context. The execution endpoint exposes this value as `reason`
-and excludes the reserved field from `command.args`. Parallel calls are
-associated by call ID, not by nearby commentary.
-
-The transform applies to registered tools, including MCP and Code Mode tool
-definitions, and is replayed when the tool catalog changes. Native Effect
-schemas are projected to JSON Schema; standard schemas must provide a JSON
-Schema projection. A tool that already declares the reserved argument cannot
-be instrumented safely and its update is rejected by OpenCode. The V1 plugin
-is unchanged.
-
-After updating, reload the OpenCode plugin and restart `npm run view` so the
-analyzer reads intent events. The recorder can already store these events, but
-an older viewer does not expose them as `reason`. Existing executions are not
-backfilled unless their saved events already contain explicit intent.
-
-### Report what a tool achieved
-
-The V2 plugin registers `balrog_reportOutcome`. After a tool finishes, the next
-agent-loop model request lists pending call IDs, tool names, reasons, and
-completion statuses. It asks the executing agent to report the concrete finding
-for each call before its next action or final response. For example:
-
-```json
-{
-  "callID": "call-123",
-  "outcome": "Found MyDemoService as an example service."
-}
-```
-
-Successful tool responses also include a compact, model-visible footer with the
-actual `callID`, its reason, and the reporting call to make. The agent can use
-that ID directly without a lookup tool. The wrapper does not mutate the
-original executor's result object. The endpoint removes the extra footer only
-when its exact text and call ID match the wrapper's tracing metadata, leaving
-the original result content as evidence.
-
-Pending-call instructions work when the reporter is directly exposed or is
-reachable through Code Mode's `execute` tool. Failed calls keep their original
-errors; their IDs are supplied through those automatic instructions.
-
-In Code Mode, call `tools.balrog.reportOutcome({ callID, outcome })`. The
-reporting invocation must not contain unrelated work. The reporting tool does
-not require `__balrogReason` and does not prompt for its own
-outcome. A reporting-only `execute` wrapper also does not trigger a further
-report; a wrapper that also invokes ordinary tools still does.
-
-Reports must refer to a completed instrumented call in the current session.
-Missing or blank values, unknown call IDs, and calls still in progress are
-rejected. Failed calls can be reported with an honest description of what could
-not be achieved. Parallel calls are associated by session and call ID. An
-explicit correction replaces the earlier outcome.
-
-Each accepted report records a `balrog.tool.outcome` event. The analyzer attaches
-it to the original execution without replacing the raw result or changing its
-completion timestamp. The plugin does not generate summaries or score them.
-These are agent-authored statements, not independently verified conclusions.
-
-Reporting is requested through model instructions, not guaranteed by execution
-hooks. If the agent is interrupted or does not report, `outcome` stays `null`.
-Reloading the plugin clears its in-memory pending-call tracking; older calls
-cannot be reported through the new instance. Saved outcome events can still be
-replayed by the viewer. Restart the viewer to load the updated analyzer; without
-database persistence, restarting loses its in-memory event history.
+### Persist recordings
 
 To persist events in a SQLite database and replay all saved events on startup,
 pass a database filename to the viewer:

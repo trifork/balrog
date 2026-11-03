@@ -67,7 +67,6 @@ export class SessionAnalyzer {
   private readonly skills = new SessionSkillAnalyzer();
   private readonly toolNames = new Map<string, string>();
   private readonly executions = new Map<string, Map<string, ToolExecution>>();
-  private readonly context = new Map<string, Map<string, string>>();
 
   getSessionID(event: LogEvent): string | undefined {
     const envelope = event as unknown as Record<string, unknown>;
@@ -120,17 +119,6 @@ export class SessionAnalyzer {
 
     const title = this.extractTitle(tag, data);
     if (title) session.title = title;
-
-    const messageID = nonEmptyString(data?.["assistantMessageID"]) ?? "";
-    if (tag === "session.execution.started") this.context.delete(sessionID);
-    if (tag === "session.text.ended" && data?.["role"] !== "user") {
-      const text = nonEmptyString(data?.["text"]);
-      if (text) {
-        const messages = this.context.get(sessionID) ?? new Map<string, string>();
-        messages.set(messageID, text);
-        this.context.set(sessionID, messages);
-      }
-    }
 
     const callID = this.getCallID(data);
     if (callID) {
@@ -192,8 +180,6 @@ export class SessionAnalyzer {
           execution.reason = execution.reason
             ?? nonEmptyString(recordedReason)
             ?? nonEmptyString(data?.["reason"])
-            ?? nonEmptyString(inputObject?.["description"])
-            ?? this.context.get(sessionID)?.get(messageID)
             ?? null;
         }
       }

@@ -3,6 +3,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import type { ViewerMessage, ViewerResponse } from "../shared/viewer-protocol.js";
 import { isPermissionReply } from "../shared/permission-protocol.js";
 import { SessionAnalyzer } from "./analyzer.js";
+import { conversationSnapshot } from "./conversation.js";
 import { eventContent } from "./event-content.js";
 import { FileActivityTracker, type PromptActivity } from "./file-activity.js";
 import { serveFrontend } from "./frontend.js";
@@ -72,6 +73,34 @@ export class LogViewer {
           executions: sessionID ? this.analyzer.getToolExecutions(sessionID) : [],
           skills: sessionID ? this.analyzer.getSkillActivations(sessionID) : [],
         }));
+        return;
+      }
+
+      if (pathname.startsWith("/api/sessions/") && pathname.endsWith("/conversation")) {
+        const reply = (status: number, body: unknown) => {
+          response.writeHead(status, {
+            "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store",
+          });
+          response.end(JSON.stringify(body));
+        };
+        let sessionID: string;
+        try {
+          sessionID = decodeURIComponent(pathname.slice("/api/sessions/".length, -"/conversation".length));
+        } catch {
+          reply(400, { error: "Invalid session ID" });
+          return;
+        }
+        const cutoff = new URL(request.url!, "http://localhost").searchParams.get("before");
+        const before = cutoff === null ? undefined : Number(cutoff);
+        if (cutoff !== null && (!cutoff.trim() || !Number.isSafeInteger(before) || before! < 0)) {
+          reply(400, { error: "before must be a non-negative Unix-millisecond timestamp" });
+          return;
+        }
+        if (!this.analyzer.getSession(sessionID)) {
+          reply(404, { error: "Session not found" });
+          return;
+        }
+        reply(200, conversationSnapshot(this.events.map(({ event }) => event), sessionID, before));
         return;
       }
 

@@ -51,7 +51,7 @@ test("tool executions endpoint correlates tool names, arguments, context and res
       command: { name: "shell", args: { command: "npm test" } },
       startedAt: 120,
       completedAt: 150,
-      reason: "Run the tests to check the change.",
+      reason: null,
       outcome: null,
       result: [{ type: "text", text: "All tests passed" }],
     }],

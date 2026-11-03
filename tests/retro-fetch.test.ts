@@ -25,6 +25,8 @@ async function endpoint(t: TestContext, body: unknown, status = 200) {
 test("retro retrieval always supplies a session and preserves evidence while sorting startedAt ascending", async (t) => {
   const payload = {
     sessionID: "ses_fixture",
+    events: [{ tag: "session.text.ended", "session.text.ended": { data: { text: "Check the build" } } }],
+    recording: { source: "recorded-events", before: null, unknownTimestampEvents: 1, excludedByCutoff: 0 },
     executions: [
       { callID: "late", startedAt: 30, createdAt: 1, reason: "Check the build", outcome: "Build passed" },
       { callID: "early", startedAt: 10, createdAt: 999, reason: "Inspect A | B.\nSuitability is not verified.", outcome: "Found \"CandidateA\"; not verified." },
@@ -35,42 +37,47 @@ test("retro retrieval always supplies a session and preserves evidence while sor
   const { requests, baseURL } = await endpoint(t, payload);
   const { stdout } = await run(process.execPath, [script, "--session", "ses_fixture", "--base-url", baseURL]);
   const result = JSON.parse(stdout);
-  assert.deepEqual(requests, ["/api/tool-executions?session=ses_fixture"]);
+  assert.deepEqual(requests, ["/api/sessions/ses_fixture/conversation"]);
+  assert.deepEqual(result.events, payload.events);
+  assert.deepEqual(result.recording, payload.recording);
   assert.deepEqual(result.executions.map((entry: { callID: string }) => entry.callID), ["early", "tie", "late", "unknown"]);
   assert.deepEqual(result.executions[0], payload.executions[1]);
   assert.equal(result.executions[1].outcome, null);
 });
 
-test("retro retrieval excludes review-time calls at the snapshot cutoff and retains unknown timestamps", async (t) => {
-  const { baseURL } = await endpoint(t, {
+test("retro retrieval requests one server-side cutoff for the whole conversation", async (t) => {
+  const { requests, baseURL } = await endpoint(t, {
+    events: [], recording: { source: "recorded-events", before: 20, excludedByCutoff: 2, unknownTimestampEvents: 1 },
     sessionID: "ses_fixture", executions: [
       { callID: "before", startedAt: 10 },
-      { callID: "at-cutoff", startedAt: 20 },
-      { callID: "after", startedAt: 30 },
       { callID: "unknown", startedAt: null },
     ],
   });
   const { stdout } = await run(process.execPath, [script, "--session", "ses_fixture", "--base-url", baseURL, "--before", "20"]);
   const result = JSON.parse(stdout);
   assert.deepEqual(result.executions.map((entry: { callID: string }) => entry.callID), ["before", "unknown"]);
-  assert.equal(result.review.excludedByCutoff, 2);
+  assert.deepEqual(requests, ["/api/sessions/ses_fixture/conversation?before=20"]);
+  assert.equal(result.recording.excludedByCutoff, 2);
 });
 
 test("retro retrieval reports unknown sessions rather than falling back to the latest", async (t) => {
   const { requests, baseURL } = await endpoint(t, { error: "Session not found" }, 404);
   await assert.rejects(run(process.execPath, [script, "--session", "ses_missing", "--base-url", baseURL]),
     (error: unknown) => error instanceof Error && "stderr" in error && /404/.test(String(error.stderr)));
-  assert.deepEqual(requests, ["/api/tool-executions?session=ses_missing"]);
+  assert.deepEqual(requests, ["/api/sessions/ses_missing/conversation"]);
 });
 
 test("retro retrieval rejects a mismatched session and malformed execution records", async (t) => {
   for (const payload of [
     { sessionID: "ses_other", executions: [] },
     { sessionID: "ses_fixture", executions: [null] },
+    { sessionID: "ses_fixture", executions: [] },
+    { sessionID: "ses_fixture", executions: [], events: [null], recording: { source: "recorded-events", before: null } },
+    { sessionID: "ses_fixture", executions: [], events: [], recording: { source: "recorded-events", before: 123 } },
   ]) {
     const { requests, baseURL } = await endpoint(t, payload);
     await assert.rejects(run(process.execPath, [script, "--session", "ses_fixture", "--base-url", baseURL]));
-    assert.deepEqual(requests, ["/api/tool-executions?session=ses_fixture"]);
+    assert.deepEqual(requests, ["/api/sessions/ses_fixture/conversation"]);
   }
 });
 

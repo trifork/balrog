@@ -36,7 +36,7 @@ export async function registerRetro(ctx: Plugin.Context): Promise<void> {
           agents: prompt.agents?.map(({ mention: _mention, ...agent }) => agent),
           skills: [...(prompt.skills ?? []).filter((skill) => skill.id !== id)
             .map(({ mention: _mention, ...skill }) => skill), { id }],
-          text: `Use the retro skill for a read-only Balrog retrospective.\nTarget Balrog session: ${target}\nSnapshot cutoff: ${cutoff} (Unix milliseconds; include calls with startedAt before this cutoff).\nOrder the execution table by startedAt ascending. Preserve recorded reasons and outcomes verbatim. Show the call-level table and the separate higher-level improvement table. Propose changes; do not apply them.`,
+          text: `Use the retro skill for a read-only Balrog retrospective.\nTarget Balrog session: ${target}\nSnapshot cutoff: ${cutoff} (Unix milliseconds; request conversation events before this cutoff).\nRead the entire recorded conversation and assess all tool calls together in one analysis pass. Infer each call's reason and outcome from the evidence; label these as retrospective assessments, not original agent reports. Order the execution table by startedAt ascending. Show the call-level table and the separate higher-level improvement table. Propose changes; do not apply them.`,
         });
       },
     });

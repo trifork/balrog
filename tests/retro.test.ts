@@ -51,6 +51,9 @@ test("retro registers a bundled explicit-only skill and defaults to the caller s
   assert.equal(prompts[0].delivery, "queue");
   assert.match(prompts[0].text, /startedAt ascending/);
   assert.match(prompts[0].text, /Snapshot cutoff: \d+/);
+  assert.match(prompts[0].text, /entire recorded conversation/);
+  assert.match(prompts[0].text, /one analysis pass/);
+  assert.equal(prompts.length, 1);
 });
 
 test("retro can review another session without moving the caller or dropping attached skills", async (t) => {
@@ -79,10 +82,15 @@ test("retro rejects ambiguous command arguments without submitting a review prom
   assert.equal(prompts.length, 0);
 });
 
-test("retro skill specifies verbatim evidence and an editable output template with higher-level estimates", async (t) => {
+test("retro assesses the whole conversation in one pass without per-tool model calls or live reporting", async (t) => {
   const { skills } = await setup(t);
   const content = skills[0].content;
-  assert.match(content, /Preserve `reason` and `outcome` verbatim/);
+  assert.match(content, /retrospective assessments/);
+  assert.match(content, /one analysis pass/);
+  assert.match(content, /at most three/);
+  assert.match(content, /Never make a model request or delegate an agent per tool call/);
+  assert.match(content, /\/api\/sessions\/.*\/conversation/);
+  assert.match(content, /unknown/);
   assert.match(content, /Order by `startedAt` ascending/);
   assert.match(content, /\[assets\/retro-output\.md\]\(assets\/retro-output\.md\)/);
   const template = await readFile(new URL("../skills/retro/assets/retro-output.md", import.meta.url), "utf8");
@@ -101,6 +109,7 @@ test("retro skill specifies verbatim evidence and an editable output template wi
   assert.match(content, /AGENTS\.md/);
   assert.match(content, /Co-locate tightly related implementation, settings, and tests by feature/);
   assert.match(content, /Do not edit files, restructure modules/);
-  assert.match(content, /Evaluate the completed snapshot as it stands/);
-  assert.match(content, /do not ask the original agent to resume, amend reports, or supply new outcomes/);
+  assert.match(content, /original records remain unchanged/);
+  assert.doesNotMatch(content, /Preserve `reason` and `outcome` verbatim|A missing outcome stays `null`/);
+  assert.match(template, /retrospective assessments/);
 });

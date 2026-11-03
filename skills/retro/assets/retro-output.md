@@ -5,16 +5,19 @@
 - Session: `{{session-id}}`
 - Task and constraints: {{original task and constraints, or unknown}}
 - Repository and revision: {{verified repository and revision, or unverified}}
-- Outcome coverage: {{calls with recorded outcomes}} / {{included calls}}
+- Assessment coverage: {{calls with evidence-supported reason and outcome assessments}} / {{included calls; distinguish unknowns and pending calls}}
 - Reporting helpers excluded: {{count}}
 - Review-time calls excluded: {{yes, no, or unknown; explain snapshot limits without showing the cutoff unless requested}}
 - Evidence limits: {{missing context, unknown timestamps, current-revision inspections, or redactions; use none when applicable}}
 
 ## Commands
 
+Reasons and outcomes below are retrospective assessments of the recorded
+conversation, not original agent reports. Original records remain unchanged.
+
 | id | command | reason | outcome |
 | --- | --- | --- | --- |
-| 1 | {{tool name and arguments, or reference to argument block}} | {{verbatim reason or null}} | {{verbatim outcome or null}} |
+| 1 | {{tool name and arguments, or reference to argument block}} | {{explicit or inferred purpose; unknown if unsupported}} | {{evidence-supported finding, failure, partial progress, pending, or unknown}} |
 
 <!-- Repeat rows in chronological order with consecutive numeric IDs. For an empty session, keep the header and state that no calls were recorded. -->
 

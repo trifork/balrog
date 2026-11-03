@@ -125,7 +125,7 @@ test("analyzer keeps one row per execution, sorts by call time and preserves fai
     },
     {
       callID: "call-1", command: { name: "shell", args: { command: "npm test" } },
-      startedAt: 20, completedAt: 40, reason: "Check the build.", outcome: null,
+      startedAt: 20, completedAt: 40, reason: null, outcome: null,
       result: {
         error: { type: "Error", message: "Tests failed" },
         content: [{ type: "text", text: "1 failed test" }],
@@ -155,12 +155,12 @@ test("analyzer exposes partially recorded executions without inventing their mis
   assert.deepEqual(analyzer.getToolExecutions("partial"), [{
     callID: "call-1",
     command: { name: "shell", args: { command: "npm test", description: "Verify the changes" } },
-    startedAt: 60, completedAt: 70, reason: "Verify the changes", outcome: null,
+    startedAt: 60, completedAt: 70, reason: null, outcome: null,
     result: [{ type: "text", text: "Done" }],
   }]);
 });
 
-test("analyzer uses recorded intent before commentary and does not carry context into a new execution", (t) => {
+test("analyzer preserves historical explicit reasons but leaves retrospective inference to retro", (t) => {
   t.mock.method(Date, "now", () => 1_700_000_000_000);
   const analyzer = new SessionAnalyzer();
   analyzer.process(logEvent("session.text.ended", "session-1", {
@@ -180,7 +180,7 @@ test("analyzer uses recorded intent before commentary and does not carry context
   }));
   const executions = analyzer.getToolExecutions("session-1");
   assert.deepEqual(executions.map((execution) => execution.reason), [
-    "Run regression tests", "Check compilation", null,
+    null, "Check compilation", null,
   ]);
   assert.equal(executions[0].startedAt, 1_700_000_000_000);
 });

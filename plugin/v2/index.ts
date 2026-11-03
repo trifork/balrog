@@ -1,8 +1,6 @@
 import { Plugin } from "@opencode/plugin";
 import { Recorder } from "../shared/recorder.js";
 import { SensitiveReadPermissions } from "./permissions.js";
-import { instrumentTools } from "./instrumentation.js";
-import { registerOutcomeReporting } from "./outcomes.js";
 import { registerRetro } from "./retro.js";
 import { registerEvents } from "./events.js";
 
@@ -23,11 +21,7 @@ export default Plugin.define({
     const permissions = new SensitiveReadPermissions(ctx, recorder.pluginID, ctx.options.logEndpoint ?? "http://localhost:5001/log");
     try {
       await permissions.start();
-      if (ctx.options.outcomesAndRetro ?? true) {
-        const outcomes = await registerOutcomeReporting(ctx, recorder);
-        await instrumentTools(ctx, recorder, outcomes);
-        await registerRetro(ctx);
-      }
+      await registerRetro(ctx);
       const stopRecording = registerEvents({
         context: ctx,
         recorder,
