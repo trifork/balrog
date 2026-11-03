@@ -7,6 +7,7 @@ interface Props {
   activeEventID?: number;
   centerRequest?: { id: number };
   onSelect: (id: number) => void;
+  onActivate?: (id: number) => void;
   markerWidths?: readonly number[];
 }
 
@@ -16,10 +17,11 @@ interface Drag {
   startX: number;
   startY: number;
   candidateID?: number;
+  activate: boolean;
   started: boolean;
 }
 
-export function useTimelineScrubber({ events, activeEventID, centerRequest, onSelect, markerWidths }: Props) {
+export function useTimelineScrubber({ events, activeEventID, centerRequest, onSelect, onActivate, markerWidths }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLButtonElement>(null);
   const dragRef = useRef<Drag | null>(null);
@@ -37,14 +39,14 @@ export function useTimelineScrubber({ events, activeEventID, centerRequest, onSe
   const positionRef = useRef(activeIndex);
   const centerRequestRef = useRef<number | undefined>(undefined);
   const layout = useMemo(() => timelineLayout(events.length, activeIndex, viewportWidth, markerWidths), [events.length, activeIndex, viewportWidth, markerWidths]);
-  const inputRef = useRef({ events, onSelect, layout });
+  const inputRef = useRef({ events, onSelect, onActivate, layout });
   const firstEventID = events[0]?.id;
 
   useLayoutEffect(() => {
-    inputRef.current = { events, onSelect, layout };
+    inputRef.current = { events, onSelect, onActivate, layout };
     indexRef.current = activeIndex;
     if (Math.round(positionRef.current) !== activeIndex) positionRef.current = activeIndex;
-  }, [events, onSelect, layout, activeIndex]);
+  }, [events, onSelect, onActivate, layout, activeIndex]);
 
   const updateFade = useCallback(() => {
     const viewport = viewportRef.current;
@@ -143,6 +145,12 @@ export function useTimelineScrubber({ events, activeEventID, centerRequest, onSe
     }
   }, [endDrag, selectIndex, updateFade]);
 
+  const activateIndex = useCallback((index: number) => {
+    jumpToIndex(index, true);
+    const message = inputRef.current.events[indexRef.current];
+    if (message) inputRef.current.onActivate?.(message.id);
+  }, [jumpToIndex]);
+
   const beginDrag = useCallback(() => {
     const drag = dragRef.current;
     if (!drag) return;
@@ -201,6 +209,7 @@ export function useTimelineScrubber({ events, activeEventID, centerRequest, onSe
       startX: event.clientX,
       startY: event.clientY,
       candidateID: marker ? Number(marker.dataset.eventId) : events[handle ? activeIndex : index]?.id,
+      activate: Boolean(marker),
       started: false,
     };
     wheelRef.current = 0;
@@ -231,7 +240,10 @@ export function useTimelineScrubber({ events, activeEventID, centerRequest, onSe
     endDrag();
     if (candidateID !== undefined) {
       const index = inputRef.current.events.findIndex((message) => message.id === candidateID);
-      if (index >= 0) jumpToIndex(index, true);
+      if (index >= 0) {
+        if (drag.activate) activateIndex(index);
+        else jumpToIndex(index, true);
+      }
     }
   };
 
@@ -243,6 +255,13 @@ export function useTimelineScrubber({ events, activeEventID, centerRequest, onSe
       return;
     }
     const index = indexRef.current;
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      const markerID = event.currentTarget.dataset.eventId;
+      const focusedIndex = markerID === undefined ? index : events.findIndex((message) => message.id === Number(markerID));
+      if (focusedIndex >= 0) activateIndex(focusedIndex);
+      return;
+    }
     const destinations: Record<string, number> = {
       ArrowLeft: index - 1,
       ArrowDown: index - 1,
@@ -252,15 +271,14 @@ export function useTimelineScrubber({ events, activeEventID, centerRequest, onSe
       PageDown: index + 10,
       Home: 0,
       End: events.length - 1,
-      Enter: index,
-      " ": index,
     };
     if (!(event.key in destinations)) return;
     event.preventDefault();
-    jumpToIndex(destinations[event.key], event.key === "Enter" || event.key === " ");
+    jumpToIndex(destinations[event.key]);
+    handleRef.current?.focus({ preventScroll: true });
   };
 
   const tooltipVisible = tooltipEventID !== undefined && tooltipEventID === events[activeIndex]?.id;
 
-  return { viewportRef, handleRef, activeIndex, layout, latestOutside, dragging, scrubSpeed, tooltipVisible, hideTooltip, endDrag, jumpToIndex, updateFade, startDrag, moveDrag, stopDrag, onKeyDown };
+  return { viewportRef, handleRef, activeIndex, layout, latestOutside, dragging, scrubSpeed, tooltipVisible, hideTooltip, endDrag, jumpToIndex, activateIndex, updateFade, startDrag, moveDrag, stopDrag, onKeyDown };
 }

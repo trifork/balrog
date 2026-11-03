@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { Profiler } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { LogEvent } from "../../server/log-receiver";
+import type { PromptActivity } from "../../server/file-activity";
 import { App } from "./App";
 import type { ReceivedEvent, ViewerState } from "./useViewer";
 
@@ -23,7 +24,7 @@ function message(id: number, tag: string, sessionID: string, content?: string): 
 }
 
 const cards = () => within(screen.getByRole("region", { name: "Session events" })).queryAllByRole("article");
-const openEvents = async (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByText("Event stream", { selector: "summary span" }));
+const openEvents = async (user: ReturnType<typeof userEvent.setup>) => user.click(screen.getByRole("button", { name: /^(Expand|Collapse) event stream$/ }));
 
 function command(id: number, sessionID = "s1"): ReceivedEvent {
   return {
@@ -65,10 +66,8 @@ afterEach(() => {
 test("prioritizes the heatmap and reveals newest-first events, command previews and safe raw details", async () => {
   const user = userEvent.setup();
   const { container } = render(<App />);
-  expect(screen.getByRole("heading", { name: "File heatmap" })).toBeTruthy();
-  expect(container.querySelector("#total-files")?.textContent).toBe("0");
-  expect(container.querySelector("#total-prompts")?.textContent).toBe("0");
-  expect(container.querySelector("#total-operations")?.textContent).toBe("0");
+  expect(screen.getByRole("region", { name: "File activity heatmap" })).toBeTruthy();
+  expect(screen.getByText("0 files × 0 prompts")).toBeTruthy();
   expect(screen.queryByRole("region", { name: "Session events" })).toBeNull();
   await openEvents(user);
   expect(cards()).toHaveLength(4);
@@ -90,7 +89,7 @@ test("searches raw events case-insensitively and combines event and session filt
   await user.type(search, "HELLO");
   expect(cards()).toHaveLength(1);
   expect(cards()[0].textContent).toContain("Hello agent");
-  await user.keyboard("{Escape}");
+  await user.clear(search);
   expect(cards()).toHaveLength(4);
   await user.selectOptions(screen.getByRole("combobox", { name: "Filter event type" }), "tool");
   expect(cards()).toHaveLength(2);
@@ -173,9 +172,9 @@ test("event stream still centers an explicitly selected timeline event", () => {
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callback(0); return 1; });
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
   const { container } = render(<App />);
-  fireEvent.keyDown(screen.getByRole("slider", { name: "Scrub to event" }), { key: "Home" });
+  fireEvent.click(screen.getByRole("button", { name: /^Jump to command 1:/ }));
   expect(screen.getByRole("button", { name: "Collapse event stream" })).toBeTruthy();
-  expect(cards()[0].id).toBe("event-1");
+  expect(cards()[0].id).toBe("event-2");
   expect(container.querySelector<HTMLElement>(".activity-trace-scroll")!.scrollTop).toBe(230);
 });
 
@@ -276,13 +275,15 @@ test("read approvals remain visible when a different session and event filters a
   expect(state.replyPermission).toHaveBeenCalledWith(state.permissions[0], "once");
 });
 
-test("timeline scrubbing reveals the event drawer and Go live restores incoming events", async () => {
+test("timeline scrubbing leaves the event drawer closed and Go live restores incoming events", async () => {
   const user = userEvent.setup();
   const { rerender } = render(<App />);
-  expect(screen.getByRole("heading", { name: "File heatmap" })).toBeTruthy();
   const slider = screen.getByRole("slider", { name: "Scrub to event" });
   expect(slider.getAttribute("aria-valuenow")).toBe("1");
   fireEvent.keyDown(slider, { key: "Home" });
+  expect(screen.queryByRole("region", { name: "Session events" })).toBeNull();
+  expect(screen.getByRole("button", { name: "Expand event stream" })).toBeTruthy();
+  await openEvents(user);
   expect(cards()).toHaveLength(2);
   expect(cards()[0].id).toBe("event-2");
   expect(screen.getByText("Playback paused. New events are still being recorded.")).toBeTruthy();
@@ -295,19 +296,90 @@ test("timeline scrubbing reveals the event drawer and Go live restores incoming 
   expect(screen.getByText("Events appear automatically. No refresh needed.")).toBeTruthy();
 });
 
-test("the event drawer can close during paused playback and reopen on another timeline selection", async () => {
+test("the event drawer stays closed during paused playback until an event is activated", async () => {
   const user = userEvent.setup();
   state.events.push(command(5));
   render(<App />);
-  fireEvent.keyDown(screen.getByRole("slider", { name: "Scrub to event" }), { key: "Home" });
+  fireEvent.click(screen.getByRole("button", { name: /^Jump to command 1:/ }));
   expect(cards()).toHaveLength(2);
   await openEvents(user);
   expect(screen.queryByRole("region", { name: "Session events" })).toBeNull();
   fireEvent.keyDown(screen.getByRole("slider", { name: "Scrub to event" }), { key: "End" });
+  expect(screen.queryByRole("region", { name: "Session events" })).toBeNull();
+  fireEvent.keyDown(screen.getByRole("slider", { name: "Scrub to event" }), { key: "Enter" });
   expect(cards()).toHaveLength(5);
 });
 
-test("timeline follows session and related-event filters without hiding read approvals", async () => {
+test("pausing live playback does not open the event stream", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole("button", { name: "Pause live playback" }));
+  expect(screen.getByRole("button", { name: "Resume live playback" })).toBeTruthy();
+  expect(screen.queryByRole("region", { name: "Session events" })).toBeNull();
+});
+
+test("scrubbing reconstructs historical heatmap snapshots and Go live restores later activity", async () => {
+  const user = userEvent.setup();
+  const pending: PromptActivity = { id: "1", sessionID: "s1", text: "Update files", files: [
+    { path: "src/app.ts", action: "modified", outcome: "pending", callID: "edit" },
+    { path: "src/failed.ts", action: "deleted", outcome: "pending", callID: "delete" },
+  ] };
+  const completed: PromptActivity = { ...pending, files: pending.files.map((file) => ({
+    ...file, outcome: file.callID === "edit" ? "success" : "failed",
+  })) };
+  const reverted: PromptActivity = { ...completed, files: completed.files.map((file) => ({
+    ...file, reverted: file.callID === "edit",
+  })) };
+  state.events = [
+    { ...message(1, "session.inbox.delivered", "s1"), fileActivity: pending },
+    { ...command(2), fileActivity: completed },
+    { ...command(3), fileActivityUpdates: [reverted] },
+  ];
+  const { rerender } = render(<App />);
+  const heatmap = () => within(screen.getByRole("table", { name: "File operations by prompt" }));
+  const cell = (file: string) => heatmap().getByRole("button", { name: new RegExp(`^src/${file}\\.ts, prompt 01:`) });
+  await user.click(screen.getByRole("button", { name: "Changes" }));
+  expect(cell("app").getAttribute("data-reverted")).toBe("true");
+  const slider = screen.getByRole("slider", { name: "Scrub to event" });
+  fireEvent.keyDown(slider, { key: "Home" });
+  expect(slider.getAttribute("aria-valuemax")).toBe("3");
+  expect(cell("app").getAttribute("data-pending")).toBe("true");
+  expect(cell("app").hasAttribute("data-reverted")).toBe(false);
+  expect(cell("failed").hasAttribute("data-failed")).toBe(false);
+  await user.click(heatmap().getByRole("button", { name: /^Prompt 01:/ }));
+  expect(cell("app").getAttribute("data-pending")).toBe("true");
+  expect(screen.getByRole("button", { name: "Resume live playback" })).toBeTruthy();
+  fireEvent.keyDown(slider, { key: "ArrowRight" });
+  expect(cell("app").getAttribute("data-heat")).toBe("1");
+  expect(cell("app").hasAttribute("data-pending")).toBe(false);
+  expect(cell("app").hasAttribute("data-reverted")).toBe(false);
+  expect(cell("failed").getAttribute("data-failed")).toBe("true");
+  fireEvent.keyDown(slider, { key: "ArrowRight" });
+  expect(cell("app").getAttribute("data-heat")).toBe("0");
+  expect(cell("app").getAttribute("data-reverted")).toBe("true");
+  fireEvent.keyDown(slider, { key: "ArrowLeft" });
+  state = { ...state, events: [...state.events, {
+    ...message(4, "session.inbox.delivered", "s1"),
+    fileActivity: { id: "2", sessionID: "s1", text: "Later prompt", files: [
+      { path: "src/later.ts", action: "created", outcome: "success", callID: "create" },
+    ] },
+  }] };
+  rerender(<App />);
+  expect(cell("app").getAttribute("data-heat")).toBe("1");
+  expect(heatmap().queryByText("later.ts")).toBeNull();
+  expect(heatmap().queryByRole("button", { name: /^Prompt 02:/ })).toBeNull();
+  expect(screen.queryByRole("region", { name: "Session events" })).toBeNull();
+  await user.click(screen.getByRole("button", { name: "All prompts" }));
+  expect(cell("app").getAttribute("data-heat")).toBe("1");
+  expect(heatmap().queryByText("later.ts")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Resume live playback" }));
+  expect(cell("app").getAttribute("data-reverted")).toBe("true");
+  expect(heatmap().getByText("later.ts")).toBeTruthy();
+  expect(heatmap().getByRole("button", { name: /^Prompt 02:/ })).toBeTruthy();
+  expect(screen.queryByRole("region", { name: "Session events" })).toBeNull();
+});
+
+test("timeline follows the session without inheriting related-event filters or hiding read approvals", async () => {
   const user = userEvent.setup();
   state.permissions = [{ pluginID: "p1", sessionID: "s1", requestID: "r1", resources: ["/project/appsettings.json"], status: "pending" }];
   state.events[0] = {
@@ -322,7 +394,7 @@ test("timeline follows session and related-event filters without hiding read app
   expect(screen.getByRole("slider", { name: "Scrub to event" }).getAttribute("aria-valuemax")).toBe("2");
   await user.click(screen.getByRole("button", { name: "Inspect 1 related events" }));
   expect(cards()).toHaveLength(1);
-  expect(screen.getByRole("slider", { name: "Scrub to event" }).getAttribute("aria-valuemax")).toBe("1");
+  expect(screen.getByRole("slider", { name: "Scrub to event" }).getAttribute("aria-valuemax")).toBe("2");
   fireEvent.keyDown(screen.getByRole("slider", { name: "Scrub to event" }), { key: "Home" });
   await user.click(screen.getByRole("tab", { name: /Second session/ }));
   expect(cards()).toHaveLength(1);
@@ -349,12 +421,12 @@ test("timeline remains stable when a related file has no events in the next prom
   expect(cards()).toHaveLength(1);
   await user.click(within(screen.getByRole("complementary", { name: "Selected prompt and file" })).getByRole("button", { name: "Next prompt" }));
   expect(cards()).toHaveLength(0);
-  expect(screen.queryByRole("slider", { name: "Scrub to event" })).toBeNull();
+  expect(screen.getByRole("slider", { name: "Scrub to event" }).getAttribute("aria-valuemax")).toBe("2");
   expect(screen.getByText("No recorded activity for this file in this prompt.")).toBeTruthy();
   expect(commits).toBeLessThan(40);
 });
 
-test("heatmap prompt navigation centers the timeline without retaining an older playback cutoff", async () => {
+test("heatmap prompt navigation centers the timeline while preserving live playback", async () => {
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(400);
   const user = userEvent.setup();
   const first = { id: "1", sessionID: "s1", text: "First prompt", files: [] };
@@ -367,12 +439,12 @@ test("heatmap prompt navigation centers the timeline without retaining an older 
   ];
   render(<App />);
   const slider = screen.getByRole("slider", { name: "Scrub to event" });
-  fireEvent.keyDown(slider, { key: "Home" });
-  expect(cards()).toHaveLength(1);
+  await openEvents(user);
+  expect(cards()).toHaveLength(4);
   const heatmap = within(screen.getByRole("table", { name: "File operations by prompt" }));
   await user.click(heatmap.getByRole("button", { name: /^Prompt 02:/ }));
   expect(cards()).toHaveLength(2);
-  expect(slider.getAttribute("aria-valuenow")).toBe("1");
+  expect(slider.getAttribute("aria-valuenow")).toBe("2");
   expect(Number.parseFloat(slider.style.left) - slider.parentElement!.parentElement!.scrollLeft).toBe(200);
   const inspector = within(screen.getByRole("complementary", { name: "Selected prompt and file" }));
   await user.click(inspector.getByRole("button", { name: "Previous prompt" }));
@@ -381,5 +453,6 @@ test("heatmap prompt navigation centers the timeline without retaining an older 
   expect(Number.parseFloat(slider.style.left) - slider.parentElement!.parentElement!.scrollLeft).toBe(200);
   await user.click(screen.getByRole("button", { name: "All prompts" }));
   expect(cards()).toHaveLength(4);
-  expect(slider.getAttribute("aria-valuenow")).toBe("4");
+  expect(slider.getAttribute("aria-valuenow")).toBe("2");
+  expect(screen.getByRole("button", { name: "Pause live playback" })).toBeTruthy();
 });

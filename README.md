@@ -306,13 +306,18 @@ content starts collapsed; use **Expand all** to show visible event content or
 state. Expand **Raw event** to inspect the original JSON. Search, filters, and
 expanded raw details survive live updates.
 
-The bottom timeline follows the filtered event stream. Select an event to open
-the stream and pause playback at that point, or use the prompt-navigation
-buttons and keyboard arrows to move through it. Numbered prompt markers use the
+The bottom timeline shows the selected session's prompt and command history,
+independently of event-stream filters. Click an event, or activate it with Enter
+or Space, to open the stream and pause playback at that point. Dragging, scrolling,
+prompt-navigation buttons, keyboard navigation, and pausing live playback change
+the playback position without opening the stream. The heatmap and inspector show
+recorded file activity up to that position, including the pending, failed, and
+reverted states recorded then; later events do not change this historical view.
+Numbered prompt markers use the
 same boundaries as the file heatmap, and previous/next prompt navigation centers
-the handle, including at the first and last events. **Go live** resumes incoming
-events. Playback only pauses the event display; recording, the file heatmap,
-and live read approvals continue updating.
+the handle, including at the first and last events. **Go live** restores the latest
+heatmap and resumes incoming events. Recording and live read approvals continue
+updating while playback is paused.
 
 The viewer recognizes V1 prompt/tool hooks and V2 delivered user prompts and
 file-tool events, including multi-file `patch` and `apply_patch` calls. V2 also records

@@ -34,9 +34,8 @@ test("heat counts successful operations, distinct files, and separate pending an
       { path: "src/gone.ts", action: "deleted", outcome: "failed", callID: "delete1" },
     ],
   };
-  const { container } = render(<FileActivity events={[message(1, prompt)]} sessions={[]} selectedSession="" />);
-  expect(container.querySelector("#total-files")?.textContent).toBe("3");
-  expect(container.querySelector("#total-operations")?.textContent).toBe("4");
+  render(<FileActivity events={[message(1, prompt)]} sessions={[]} selectedSession="" />);
+  expect(screen.getByText("3 files × 1 prompts")).toBeTruthy();
   expect(inspector().getByText("1 file touched / 1 confirmed changed")).toBeTruthy();
   expect(cell("src/app.ts").getAttribute("data-heat")).toBe("3");
   expect(cell("src/app.ts").textContent).toBe("4");
@@ -190,15 +189,15 @@ test("keeps same-ID prompts isolated across sessions and reconstructs replacemen
   const a: PromptActivity = { id: "1", sessionID: "s1", text: "First session prompt", files: [{ path: "a.ts", action: "read", outcome: "success", callID: "a" }] };
   const b: PromptActivity = { id: "1", sessionID: "s2", text: "Second session prompt", files: [{ path: "b.ts", action: "modified", outcome: "success", callID: "b" }] };
   const events = [message(1, a), message(2, b)];
-  const { rerender, container } = render(<FileActivity events={events} sessions={[]} selectedSession="" />);
-  expect(container.querySelector("#total-prompts")?.textContent).toBe("2");
+  const { rerender } = render(<FileActivity events={events} sessions={[]} selectedSession="" />);
+  expect(screen.getByText("2 files × 2 prompts")).toBeTruthy();
   await user.click(promptButton("01"));
   rerender(<FileActivity events={events} sessions={[]} selectedSession="s2" />);
   expect(matrix().queryByText("a.ts")).toBeNull();
   expect(inspector().getByRole("heading", { name: "All prompts" })).toBeTruthy();
   expect(inspector().getByText("b.ts")).toBeTruthy();
   rerender(<FileActivity events={[message(2, { ...b, files: [...b.files, ...b.files] })]} sessions={[]} selectedSession="s2" />);
-  expect(container.querySelector("#total-operations")?.textContent).toBe("1");
+  expect(cell("b.ts").textContent).toBe("1");
 });
 
 test("shows empty states and safely renders prompt and file text", () => {
@@ -313,7 +312,7 @@ test("candles show confirmed change proportions and explain prompt filtering wit
   await user.click(candle);
   expect(inspector().getByRole("heading", { name: "Mixed changes" })).toBeTruthy();
   expect(matrix().getAllByRole("button", { name: /^Prompt \d+:/ })).toHaveLength(2);
-  await user.click(screen.getByText("Event stream", { selector: "summary span" }));
+  await user.click(screen.getByRole("button", { name: "Expand event stream" }));
   expect(within(screen.getByRole("region", { name: "Session events" })).getAllByRole("article")).toHaveLength(1);
   await user.click(screen.getByRole("button", { name: "All prompts" }));
   expect(within(screen.getByRole("region", { name: "Session events" })).getAllByRole("article")).toHaveLength(2);

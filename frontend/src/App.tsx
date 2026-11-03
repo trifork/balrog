@@ -19,6 +19,9 @@ export function App() {
   const [jumpRequest, setJumpRequest] = useState<{ id: number }>();
   const [promptJump, setPromptJump] = useState<{ id: number }>();
   const prompts = useMemo(() => collectActivity(events, selected), [events, selected]);
+  const cutoffEventID = followingLive ? undefined : activeEventID ?? 0;
+  const activityPrompts = useMemo(() => cutoffEventID === undefined ? prompts
+    : collectActivity(events.filter((message) => message.id <= cutoffEventID), selected), [events, selected, prompts, cutoffEventID]);
   const sessionEvents = useMemo(() => events.filter((message) => !selected || (message.session?.sessionID ?? message.event.sessionID) === selected), [events, selected]);
   const timelineEvents = useMemo(() => sessionEvents.filter((message) => String(message.event.tag) !== "session.text.delta"), [sessionEvents]);
 
@@ -26,8 +29,13 @@ export function App() {
     setPromptJump(undefined);
     setFollowingLive(false);
     setActiveEventID(id);
-    setJumpRequest({ id });
+    setJumpRequest(undefined);
   }, []);
+
+  const inspectEvent = useCallback((id: number) => {
+    scrubToEvent(id);
+    setJumpRequest({ id });
+  }, [scrubToEvent]);
 
   useLayoutEffect(() => {
     if (!followingLive) return;
@@ -45,11 +53,10 @@ export function App() {
   }, []);
 
   const navigatePrompt = useCallback((id: number | undefined) => {
-    setFollowingLive(true);
-    setActiveEventID(id);
+    setActiveEventID((previous) => id ?? (followingLive ? undefined : previous));
     setJumpRequest(undefined);
     setPromptJump(id === undefined ? undefined : { id });
-  }, []);
+  }, [followingLive]);
 
   const toggleLive = () => {
     if (!followingLive) {
@@ -96,9 +103,9 @@ export function App() {
         {permissions.length > 0 && <div className="max-h-[35dvh] shrink-0 overflow-auto px-7 pt-4 [&>.read-approvals]:mb-0 max-[760px]:px-3">
           <PermissionRequests requests={permissions} sessions={sessions} live={status === "live"} onReply={replyPermission} />
         </div>}
-        <FileActivity events={events} sessions={sessions} selectedSession={selected} activityPrompts={prompts} activeEventID={activeEventID} cutoffEventID={followingLive ? undefined : activeEventID ?? 0} jumpRequest={jumpRequest} onPromptNavigate={navigatePrompt} />
+        <FileActivity events={events} sessions={sessions} selectedSession={selected} activityPrompts={activityPrompts} activeEventID={activeEventID} cutoffEventID={cutoffEventID} jumpRequest={jumpRequest} onPromptNavigate={navigatePrompt} />
       </main>
-      <footer className="viewer-timeline min-w-0 border-t border-line bg-frame" aria-label="Bottom bar"><Timeline events={timelineEvents} evidenceEvents={events} prompts={prompts} activeEventID={activeEventID} centerRequest={promptJump} onSelect={scrubToEvent} followingLive={followingLive} onToggleLive={toggleLive} /></footer>
+      <footer className="viewer-timeline min-w-0 border-t border-line bg-frame" aria-label="Bottom bar"><Timeline events={timelineEvents} evidenceEvents={events} prompts={prompts} activeEventID={activeEventID} centerRequest={promptJump} onSelect={scrubToEvent} onActivate={inspectEvent} followingLive={followingLive} onToggleLive={toggleLive} /></footer>
       <ReadWarning requests={permissions} live={status === "live"} />
     </div>
   );

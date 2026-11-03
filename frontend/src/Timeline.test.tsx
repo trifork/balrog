@@ -52,8 +52,9 @@ test("previous and next prompt navigation centers the handle at both ends", asyn
   const prompts = collectActivity(events, "");
   function Harness() {
     const [active, setActive] = useState(3);
-    return <Timeline events={events} prompts={prompts} activeEventID={active} followingLive={false} onSelect={setActive} />;
+    return <Timeline events={events} prompts={prompts} activeEventID={active} followingLive={false} onSelect={setActive} onActivate={onActivate} />;
   }
+  const onActivate = vi.fn();
   render(<Harness />);
   const controls = within(screen.getByRole("group", { name: "Timeline playback" }));
   const handle = screen.getByRole("slider", { name: "Scrub to event" });
@@ -64,6 +65,7 @@ test("previous and next prompt navigation centers the handle at both ends", asyn
   await user.click(controls.getByRole("button", { name: "Next prompt" }));
   expect(handle.getAttribute("aria-valuenow")).toBe("3");
   expect(Number.parseFloat(handle.style.left) - viewport.scrollLeft).toBe(200);
+  expect(onActivate).not.toHaveBeenCalled();
 });
 
 function event(id: number, tag: string, execution?: ToolExecution, sessionID = "s1"): ReceivedEvent {
@@ -77,6 +79,104 @@ const read: ToolExecution = {
   callID: "call-1", command: { name: "read", args: { path: "README.md" } },
   startedAt: 100, completedAt: null, reason: "Read the overview.\nVerify setup details.", outcome: null, result: null,
 };
+
+const scrubEvents = () => [
+  event(1, "session.tool.called", read),
+  event(2, "session.tool.called", { ...read, callID: "call-2", startedAt: 200 }),
+];
+
+function pointerViewport() {
+  const viewport = screen.getByRole("slider").parentElement!.parentElement!;
+  viewport.setPointerCapture = vi.fn();
+  viewport.hasPointerCapture = vi.fn(() => false);
+  viewport.releasePointerCapture = vi.fn();
+  return viewport;
+}
+
+test("clicking an event selects and activates it once", async () => {
+  const user = userEvent.setup();
+  const onSelect = vi.fn();
+  const onActivate = vi.fn();
+  render(<Timeline events={scrubEvents()} onSelect={onSelect} onActivate={onActivate} />);
+  pointerViewport();
+  await user.click(screen.getByRole("button", { name: /^Jump to command 1:/ }));
+  expect(onSelect).toHaveBeenLastCalledWith(1);
+  expect(onActivate).toHaveBeenCalledExactlyOnceWith(1);
+});
+
+test("clicking the slider over the current prompt opens that prompt", async () => {
+  const user = userEvent.setup();
+  const onActivate = vi.fn();
+  render(<Timeline events={[message(1, "session.inbox.delivered", first)]} onSelect={vi.fn()} onActivate={onActivate} />);
+  pointerViewport();
+  await user.click(screen.getByRole("slider"));
+  expect(onActivate).toHaveBeenCalledExactlyOnceWith(1);
+});
+
+test("keyboard navigation moves focus with playback before activation", async () => {
+  const user = userEvent.setup();
+  const events = scrubEvents();
+  const onActivate = vi.fn();
+  function Harness() {
+    const [active, setActive] = useState(1);
+    return <Timeline events={events} activeEventID={active} onSelect={setActive} onActivate={onActivate} />;
+  }
+  render(<Harness />);
+  screen.getByRole("button", { name: /^Jump to command 1:/ }).focus();
+  await user.keyboard("{ArrowRight}{Enter}");
+  expect(onActivate).toHaveBeenCalledExactlyOnceWith(2);
+});
+
+test.each(["Enter", " "])("%j activates the focused event rather than the current playback event", (key) => {
+  const onSelect = vi.fn();
+  const onActivate = vi.fn();
+  render(<Timeline events={scrubEvents()} onSelect={onSelect} onActivate={onActivate} />);
+  fireEvent.keyDown(screen.getByRole("button", { name: /^Jump to command 1:/ }), { key });
+  expect(onSelect).toHaveBeenLastCalledWith(1);
+  expect(onActivate).toHaveBeenCalledExactlyOnceWith(1);
+});
+
+test.each(["event", "slider"])("dragging from the %s scrubs without activating it on release", (target) => {
+  const onSelect = vi.fn();
+  const onActivate = vi.fn();
+  render(<Timeline events={scrubEvents()} onSelect={onSelect} onActivate={onActivate} />);
+  const viewport = pointerViewport();
+  fireEvent.pointerDown(target === "slider" ? screen.getByRole("slider") : screen.getByRole("button", { name: /^Jump to command 1:/ }), {
+    pointerId: 1, isPrimary: true, button: 0, clientX: 100, clientY: 20,
+  });
+  fireEvent.pointerMove(viewport, { pointerId: 1, clientX: 40, clientY: 20 });
+  fireEvent.pointerUp(viewport, { pointerId: 1, clientX: 40, clientY: 20 });
+  expect(onSelect).toHaveBeenLastCalledWith(1);
+  expect(onActivate).not.toHaveBeenCalled();
+});
+
+test.each(["pointerCancel", "lostPointerCapture"])("%s does not activate a pressed event", (eventType) => {
+  const onSelect = vi.fn();
+  const onActivate = vi.fn();
+  render(<Timeline events={scrubEvents()} onSelect={onSelect} onActivate={onActivate} />);
+  const viewport = pointerViewport();
+  fireEvent.pointerDown(screen.getByRole("button", { name: /^Jump to command 1:/ }), {
+    pointerId: 1, isPrimary: true, button: 0, clientX: 100, clientY: 20,
+  });
+  fireEvent[eventType as "pointerCancel" | "lostPointerCapture"](viewport, { pointerId: 1 });
+  expect(onSelect).not.toHaveBeenCalled();
+  expect(onActivate).not.toHaveBeenCalled();
+});
+
+test("clicking the track and scrolling only select a playback position", () => {
+  const onSelect = vi.fn();
+  const onActivate = vi.fn();
+  render(<Timeline events={scrubEvents()} onSelect={onSelect} onActivate={onActivate} />);
+  const viewport = pointerViewport();
+  const marker = screen.getByRole("button", { name: /^Jump to command 1:/ });
+  const pointer = { pointerId: 1, isPrimary: true, button: 0, clientX: Number.parseFloat(marker.style.left) - viewport.scrollLeft, clientY: 20 };
+  fireEvent.pointerDown(viewport, pointer);
+  fireEvent.pointerUp(viewport, pointer);
+  expect(onSelect).toHaveBeenLastCalledWith(1);
+  fireEvent.wheel(viewport, { deltaY: -12 });
+  expect(onSelect).toHaveBeenLastCalledWith(1);
+  expect(onActivate).not.toHaveBeenCalled();
+});
 
 test("prompt boundaries survive command filtering and keep their summaries and numbers", () => {
   const command = event(3, "session.tool.called", read);
