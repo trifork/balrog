@@ -9,7 +9,6 @@ import { SQLiteEventStore } from "../server/event-store.js";
 
 test("SQLite event store persists events and reads them in insertion order", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "balrog-sqlite-"));
-  t.after(() => rm(directory, { recursive: true, force: true }));
   const filename = join(directory, "events.sqlite");
   const first = {
     tag: "initialize",
@@ -48,10 +47,16 @@ test("SQLite event store persists events and reads them in insertion order", asy
   firstStore.close();
 
   const reopenedStore = new SQLiteEventStore(filename);
-  t.after(() => reopenedStore.close());
+  t.after(async () => {
+    reopenedStore.close();
+    await rm(directory, { recursive: true, force: true });
+  });
   assert.deepEqual(reopenedStore.readAll(), [first, second]);
   reopenedStore.append(first);
-  assert.deepEqual(reopenedStore.readAll(), [first, second, first]);
+  const replayed = reopenedStore.readAll();
+  assert.deepEqual(replayed.slice(0, 2), [first, second]);
+  assert.deepEqual(replayed[2], { ...first, created: (replayed[2] as unknown as { created: number }).created });
+  assert.equal(typeof (replayed[2] as unknown as { created: number }).created, "number");
 
   const metadataDatabase = new DatabaseSync(filename);
   const rows = metadataDatabase.prepare(`

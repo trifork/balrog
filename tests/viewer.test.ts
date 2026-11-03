@@ -168,9 +168,49 @@ test("viewer serves a page and streams events without writing log files", async 
   assert.equal(replayMessages[3].content, "tool output");
   assert.equal(replayMessages[3].command, "npm test");
 
-  const session = await fetch(`${origin}/api/sessions/session-viewer`);
+  const session = await fetch(`${origin}/api/sessions/session-viewer/summary`);
   assert.equal(session.status, 200);
   assert.equal((await session.json()).title, "Viewer session");
+  assert.equal((await fetch(`${origin}/api/sessions/session-viewer`)).status, 404);
+  assert.equal((await fetch(`${origin}/api/sessions/missing/summary`)).status, 404);
+
+  const activity = await fetch(`${origin}/api/sessions/session-viewer/heatmap`);
+  assert.equal(activity.status, 200);
+  const activityJSON = await activity.json();
+  assert.equal(activityJSON.schemaVersion, 1);
+  assert.equal(activityJSON.sessionID, "session-viewer");
+  assert.deepEqual(activityJSON.items, []);
+  assert.equal((await fetch(`${origin}/api/sessions/missing/heatmap`)).status, 404);
+  assert.equal((await fetch(`${origin}/api/sessions/session-viewer/activity`)).status, 404);
+});
+
+test("heatmap API includes only prompts and file access from a mixed trace", async (t) => {
+  const analyzer = new SessionAnalyzer();
+  const viewer = new LogViewer(analyzer);
+  await new Promise<void>((resolve) => viewer.listen(0, "localhost", resolve));
+  t.after(() => viewer.close());
+  const address = viewer.address();
+  assert.ok(address && typeof address !== "string");
+  const events = [
+    { type: "session.inbox.enqueued", data: { item: { type: "user", payload: { text: "Review README.md" } } } },
+    { type: "session.tool.called", data: { id: "read-1", tool: "read", input: { path: "README.md" } } },
+    { type: "session.tool.success", data: { id: "read-1" } },
+    { type: "session.tool.called", data: { id: "shell-1", tool: "shell", input: { command: "git status" } } },
+    { type: "session.text.ended", data: { text: "Review complete" } },
+  ];
+  for (const [index, event] of events.entries()) {
+    analyzer.process({
+      tag: event.type, sessionID: "mixed-session", pluginID: "plugin-1", apiVersion: "v2",
+      [event.type]: { ...event, created: 100 + index, data: { sessionID: "mixed-session", ...event.data } },
+    } as unknown as LogEvent);
+  }
+  const response = await fetch(`http://localhost:${address.port}/api/sessions/mixed-session/heatmap`);
+  assert.equal(response.status, 200);
+  const activity = await response.json();
+  assert.deepEqual(activity.items.map((item: { kind: string }) => item.kind), ["prompt", "file.read"]);
+  assert.equal(activity.items[0].text, "Review README.md");
+  assert.equal(activity.items[1].path, "README.md");
+  assert.equal(activity.items[1].status, "completed");
 });
 
 test("viewer replays every event loaded before a browser connects", async (t) => {

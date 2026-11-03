@@ -42,8 +42,10 @@ test("recorder posts the envelope and keeps a stable per-instance ID", async (t)
     sessionID: null,
     pluginID: recorder.pluginID,
     apiVersion: "v1",
+    created: records[0].created,
   });
   assert.equal(records[1].pluginID, recorder.pluginID);
+  assert.equal(typeof records[0].created, "number");
   assert.equal(records[1].sessionID, "session-1");
   assert.notEqual(new Recorder("v1").pluginID, recorder.pluginID);
 });
@@ -185,10 +187,12 @@ test("V2 subscribes to native events and records them without modifying them", a
     "session.execution.failed",
     "session.execution.started",
     "session.execution.succeeded",
+    "session.inbox.enqueued",
     "session.renamed",
     "session.text.ended",
     "session.text.started",
     "session.tool.called",
+    "session.tool.input.started",
     "session.tool.failed",
     "session.tool.success",
   ];
@@ -222,7 +226,7 @@ test("V2 subscribes to native events and records them without modifying them", a
     context: { location: context.location, version: "2.2.0" },
   });
   assert.deepEqual(records.slice(1).map((record) => record[record.tag]),
-    snapshots.map((event) => ({ event })));
+    snapshots);
   assert.deepEqual(records.slice(1).map((record) => record.tag),
     events.map((event) => event.type));
   assert.deepEqual(records.slice(1).map((record) => record.sessionID),

@@ -204,10 +204,31 @@ narrow the feed. Expand **Raw event** to inspect the original JSON, or use
 
 The viewer also exposes the analyzer's session summaries as JSON at
 `http://localhost:5002/api/sessions` and an individual session at
-`http://localhost:5002/api/sessions/<sessionID>`. `SessionAnalyzer` is available
+`http://localhost:5002/api/sessions/<sessionID>/summary`. `SessionAnalyzer` is available
 from `server/analyzer.ts`; call `process(event)` for each log event, then use
 `getSessionTitle(sessionID)`, `getSession(sessionID)`, or `getSessions()` to
 query its in-memory state. Session rename events update the remembered title.
+
+### Session heatmap
+
+`GET http://localhost:5002/api/sessions/<sessionID>/heatmap` returns
+`{ schemaVersion: 1, sessionID, items }`, a chronological timeline of user prompts,
+file reads, changes, and grep searches. Commands and LLM text remain in raw logs
+but are excluded here. Types are defined in `server/session-activity.ts`; use
+`SessionAnalyzer.getSessionActivity(sessionID)` in TypeScript.
+
+Each item includes `id`, `kind`, `timestamp` (Unix milliseconds), `timestampSource`,
+and source event metadata. Optional `rationale` comes only from explicit tool
+arguments, never inferred reasoning. File operations have `status` (`pending`,
+`completed`, or `failed`) and optional `completedAt`/`error`; filter on
+`status === "completed"` to exclude attempted or failed operations.
+
+Changes use `created`, `modified`, or `deleted`; writes are conservatively treated
+as modifications. Grep separates search scope from matched files, not all scanned
+files. Indirect shell access, unknown tools, and missing historical events cannot
+be reconstructed. Timestamps prefer source time, then recorded time, then receipt
+time, as indicated by `timestampSource`.
+
 
 To persist events in a SQLite database and replay all saved events on startup,
 pass a database filename to the viewer:
@@ -234,19 +255,18 @@ Every record includes `tag`, `sessionID`, `pluginID` (per plugin instance), and
 | Activity | V1 | V2 |
 | --- | --- | --- |
 | Initialization | `initialize` | `initialize` |
-| Before a tool | `tool.execute.before` | `tool.execute.before` |
-| After a tool | `tool.execute.after` | `tool.execute.after` (completed or error) |
-| User input | `chat.message` | `session.prompt` |
+| Before a tool | `tool.execute.before` | `session.tool.called` |
+| After a tool | `tool.execute.after` | `session.tool.success`, `session.tool.failed` |
+| User input | `chat.message` | `session.inbox.enqueued` (user items) |
+| Tool names | Included in hooks | `session.tool.input.started` |
+| LLM text | Not captured | `session.text.ended` |
 | Before a command | `command.execute.before` | No equivalent global hook |
 
-V1 hook records preserve `{ input, output }`. V2 hook records contain
-`{ event }` with the native V2 payload; they are not payload-compatible with V1.
-
-V2's prompt hook runs before durable prompt admission, not after a chat message
-is persisted. Commands that submit through `session.prompt` also trigger it, but
-it is not a general command-execution trace. Prompt admission retries can
-produce duplicate observations. V2 hook registrations are disposed automatically
-when the plugin unloads.
+V1 hook records preserve `{ input, output }`. V2 records contain the native event
+directly under the tag; the analyzer also accepts older `{ event }` wrappers.
+They are not payload-compatible with V1. V2 captures prompts at durable inbox
+admission, not through the pre-admission prompt hook. The event subscription is
+aborted when the plugin unloads.
 
 ## Development
 

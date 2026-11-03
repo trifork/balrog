@@ -1,4 +1,6 @@
 import type { LogEvent } from "./log-receiver.js";
+import { eventMetadata } from "./event-metadata.js";
+import { SessionActivityAnalyzer, type SessionActivity } from "./session-activity.js";
 
 export interface SessionSummary {
   sessionID: string;
@@ -37,6 +39,8 @@ function nonEmptyString(value: unknown): string | undefined {
 export class SessionAnalyzer {
   private readonly sessions = new Map<string, MutableSessionSummary>();
   private readonly toolCalls = new Map<string, ToolCallSummary>();
+  private readonly activity = new SessionActivityAnalyzer();
+  private readonly toolNames = new Map<string, string>();
 
   getSessionID(event: LogEvent): string | undefined {
     const envelope = event as unknown as Record<string, unknown>;
@@ -49,6 +53,7 @@ export class SessionAnalyzer {
   }
 
   process(event: LogEvent): void {
+    this.activity.process(event);
     const envelope = event as unknown as Record<string, unknown>;
     const tag = nonEmptyString(envelope["tag"]);
     if (!tag) return;
@@ -59,7 +64,7 @@ export class SessionAnalyzer {
     const sessionID = this.getSessionID(event);
     if (!sessionID) return;
 
-    const now = Date.now();
+    const now = eventMetadata(event).timestamp;
     let session = this.sessions.get(sessionID);
     if (!session) {
       session = {
@@ -84,6 +89,12 @@ export class SessionAnalyzer {
     const title = this.extractTitle(tag, data);
     if (title) session.title = title;
 
+    if (tag === "session.tool.input.started") {
+      const callID = this.getCallID(data);
+      const name = nonEmptyString(data?.["name"]);
+      if (callID && name) this.toolNames.set(this.toolCallKey(sessionID, callID), name);
+    }
+
     if (tag === "session.tool.called") {
       const callID = this.getCallID(data);
       if (callID) {
@@ -92,7 +103,8 @@ export class SessionAnalyzer {
         this.toolCalls.set(this.toolCallKey(sessionID, callID), {
           sessionID,
           callID,
-          tool: nonEmptyString(data?.["tool"]),
+          tool: nonEmptyString(data?.["tool"])
+            ?? this.toolNames.get(this.toolCallKey(sessionID, callID)),
           command: nonEmptyString(data?.["command"])
             ?? nonEmptyString(inputObject?.["command"]),
           input,
@@ -103,6 +115,10 @@ export class SessionAnalyzer {
 
   getSessionTitle(sessionID: string): string | undefined {
     return this.sessions.get(sessionID)?.title;
+  }
+
+  getSessionActivity(sessionID: string): SessionActivity | undefined {
+    return this.activity.getSession(sessionID);
   }
 
   getSession(sessionID: string): SessionSummary | undefined {

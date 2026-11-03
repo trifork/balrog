@@ -2,6 +2,8 @@ import { createServer, type Server } from "node:http";
 import type { OpenCodeEvent } from "@opencode/protocol/groups/event";
 
 interface LogMetadata {
+  /** Recorder observation time in Unix milliseconds (older logs may omit it). */
+  created?: number;
   apiVersion: "v2";
   pluginID: string;
   sessionID: string | null;

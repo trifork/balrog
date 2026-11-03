@@ -30,6 +30,7 @@ export class Recorder {
       sessionID,
       pluginID: this.pluginID,
       apiVersion: this.apiVersion,
+      created: Date.now(),
     });
 
     if (this.logEndpoint) {

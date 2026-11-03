@@ -504,12 +504,15 @@ export class LogViewer {
 
       if (
         request.method === "GET" &&
-        request.url?.startsWith("/api/sessions/")
+        request.url?.startsWith("/api/sessions/") &&
+        (request.url.endsWith("/summary") || request.url.endsWith("/heatmap"))
       ) {
         let sessionID: string;
+        const heatmap = request.url.endsWith("/heatmap");
+        const suffix = heatmap ? "/heatmap" : "/summary";
         try {
           sessionID = decodeURIComponent(
-            request.url.slice("/api/sessions/".length),
+            request.url.slice("/api/sessions/".length, -suffix.length),
           );
         } catch {
           response.writeHead(400, {
@@ -518,7 +521,9 @@ export class LogViewer {
           response.end(JSON.stringify({ error: "Invalid session ID" }));
           return;
         }
-        const session = this.analyzer.getSession(sessionID);
+        const session = heatmap
+          ? this.analyzer.getSessionActivity(sessionID)
+          : this.analyzer.getSession(sessionID);
         response.writeHead(session ? 200 : 404, {
           "Content-Type": "application/json; charset=utf-8",
         });

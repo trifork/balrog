@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import type { LogEvent } from "./log-receiver.js";
+import { eventMetadata } from "./event-metadata.js";
 
 /** Durable SQLite storage for viewer events. */
 export class SQLiteEventStore {
@@ -21,6 +22,11 @@ export class SQLiteEventStore {
         event_json TEXT NOT NULL
       )
     `);
+    const columns = new Set(this.database.prepare("PRAGMA table_info(events)").all()
+      .map((column) => column["name"]));
+    for (const [name, type] of Object.entries({ timestamp: "INTEGER", plugin_id: "TEXT", event_type: "TEXT", session_id: "TEXT" })) {
+      if (!columns.has(name)) this.database.exec(`ALTER TABLE events ADD COLUMN ${name} ${type}`);
+    }
     this.insertStatement = this.database.prepare(
       `INSERT INTO events (timestamp, plugin_id, event_type, session_id, event_json)
        VALUES (?, ?, ?, ?, ?)`,
@@ -28,49 +34,36 @@ export class SQLiteEventStore {
   }
 
   append(event: LogEvent): void {
-    const envelope = event as unknown as Record<string, unknown>;
-    const eventType = typeof envelope["tag"] === "string"
-      ? envelope["tag"]
-      : "";
-    const taggedPayload = asObject(envelope[eventType]);
-    const nativeEvent = asObject(taggedPayload?.["event"]) ?? taggedPayload;
-    const data = asObject(nativeEvent?.["data"]);
-    const sourceTimestamp = nativeEvent?.["created"] ?? envelope["created"];
-    const timestamp = typeof sourceTimestamp === "number" && Number.isFinite(sourceTimestamp)
-      ? Math.trunc(sourceTimestamp)
-      : Date.now();
+    const metadata = eventMetadata(event);
+    const { envelope } = metadata;
     const pluginID = typeof envelope["pluginID"] === "string"
       ? envelope["pluginID"]
       : null;
-    const sessionID = typeof envelope["sessionID"] === "string"
-      ? envelope["sessionID"]
-      : typeof data?.["sessionID"] === "string"
-        ? data["sessionID"]
-        : null;
 
     this.insertStatement.run(
-      timestamp,
+      Math.trunc(metadata.timestamp),
       pluginID,
-      eventType,
-      sessionID,
+      metadata.tag,
+      metadata.sessionID ?? null,
       JSON.stringify(event),
     );
   }
 
   readAll(): LogEvent[] {
     const rows = this.database
-      .prepare("SELECT event_json FROM events ORDER BY id")
+      .prepare("SELECT event_json, timestamp FROM events ORDER BY id")
       .all();
-    return rows.map((row) => JSON.parse(String(row["event_json"])) as LogEvent);
+    return rows.map((row) => {
+      const event = JSON.parse(String(row["event_json"])) as LogEvent;
+      // Preserve recording time on replay instead of assigning the server restart time.
+      if (eventMetadata(event).timestampSource === "received" && typeof row["timestamp"] === "number") {
+        return { ...event, created: row["timestamp"] } as LogEvent;
+      }
+      return event;
+    });
   }
 
   close(): void {
     this.database.close();
   }
-}
-
-function asObject(value: unknown): Record<string, unknown> | undefined {
-  return value !== null && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined;
 }
