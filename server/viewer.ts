@@ -54,6 +54,22 @@ export class LogViewer {
         return;
       }
 
+      if (request.method === "GET" && request.url?.split("?", 1)[0] === "/api/tool-executions") {
+        const url = new URL(request.url, "http://localhost");
+        const requestedSession = url.searchParams.get("session");
+        const sessionID = requestedSession || this.analyzer.getSessions()[0]?.sessionID || null;
+        const missing = sessionID !== null && !this.analyzer.getSession(sessionID);
+        response.writeHead(missing ? 404 : 200, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+        });
+        response.end(JSON.stringify(missing ? { error: "Session not found" } : {
+          sessionID,
+          executions: sessionID ? this.analyzer.getToolExecutions(sessionID) : [],
+        }));
+        return;
+      }
+
       if (
         pathname.startsWith("/api/sessions/") &&
         (pathname.endsWith("/summary") || pathname.endsWith("/heatmap"))

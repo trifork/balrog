@@ -1,0 +1,23 @@
+{
+  "sessionID": "ses_retro_fixture",
+  "executions": [
+    {
+      "callID": "call_verify",
+      "command": { "name": "read", "args": { "path": "src/Feature/CandidateCommand.cs" } },
+      "startedAt": 1700000000200,
+      "completedAt": 1700000000250,
+      "reason": "Check whether the selected candidate is synchronous.",
+      "outcome": "CandidateCommand is asynchronous; it is not a synchronous example.",
+      "result": [{ "type": "text", "text": "internal class CandidateCommand : AsyncCommand<Settings> { /* ... */ }" }]
+    },
+    {
+      "callID": "call_candidate",
+      "command": { "name": "glob", "args": { "pattern": "src/**/*Command.cs" } },
+      "startedAt": 1700000000100,
+      "completedAt": 1700000000150,
+      "reason": "Find a candidate A | B.\nDo not assume it is small.",
+      "outcome": "Found CandidateCommand.cs; suitability is not yet verified.",
+      "result": [{ "type": "text", "text": "src/Feature/CandidateCommand.cs" }]
+    }
+  ]
+}

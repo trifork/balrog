@@ -1,0 +1,17 @@
+schema_version: "1.1"
+name: verbatim-dependent-calls
+context:
+  scaffold_script: place-files.sh
+expected_outcome: |
+  The review sorts candidate discovery before candidate verification and retains
+  the recorded reason and outcome wording, including the pipe and line break.
+  It recognizes discovery as an intermediate step and keeps later verification
+  separate. It evaluates the completed trace without requiring the original
+  agent to resume or correct its reports. Assessments and proposals are separate
+  from recorded fields.
+  Improvement estimates use LOW, MEDIUM, or HIGH, and unsupported structural
+  changes are not presented as established fixes. The default call table has
+  only id, command, reason, and outcome columns. The higher-level table retains
+  improvement, complexity, gain, evidence, and validation columns.
+  Numeric IDs start at 1 after chronological sorting and are used for evidence
+  references. Timestamps and raw Balrog call IDs remain internal unless requested.
