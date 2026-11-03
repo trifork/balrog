@@ -10,7 +10,7 @@ import { PermissionBroker } from "./permissions.js";
 const { values } = parseArgs({
   options: {
     port: { type: "string", default: "5001" },
-    db: { type: "string", default: "balrog-sessions.db" },
+    db: { type: "string", default: "balrog-events.db" },
   },
   allowPositionals: false,
   strict: true,
