@@ -21,9 +21,12 @@ export default Plugin.define({
 
     const permissions = new SensitiveReadPermissions(ctx, recorder.pluginID, ctx.options.logEndpoint ?? "http://localhost:5001/log");
     await permissions.start();
-    const outcomes = await registerOutcomeReporting(ctx, recorder);
-    await instrumentTools(ctx, recorder, outcomes);
-    await registerRetro(ctx);
+
+    if (ctx.options.outcomesAndRetro ?? true) {
+      const outcomes = await registerOutcomeReporting(ctx, recorder);
+      await instrumentTools(ctx, recorder, outcomes);
+      await registerRetro(ctx);
+    }
 
     const controller = new AbortController();
     const consume = (async () => {
