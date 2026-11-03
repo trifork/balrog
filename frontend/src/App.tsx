@@ -9,6 +9,7 @@ const sessionFromURL = () => new URL(window.location.href).searchParams.get("ses
 export function App() {
   const { events, sessions, status, error } = useViewer();
   const [selected, setSelected] = useState(sessionFromURL);
+  const [rightPaneOpen, setRightPaneOpen] = useState(true);
   const sessionTitle = sessions.find((session) => session.sessionID === selected)?.title;
 
   useEffect(() => {
@@ -34,12 +35,21 @@ export function App() {
           <div className="brand-name">balrog<span className="brand-accent">.</span></div>
         </div>
         <SessionTabs sessions={sessions} selected={selected} onSelect={selectSession} />
-        <div className="live-badge" role="status"><span className="status-dot" /><span>{status === "live" ? "Live stream" : status === "connecting" ? "Connecting" : "Reconnecting"}</span></div>
+        <div className="topbar-actions">
+          <div className="live-badge" role="status"><span className="status-dot" /><span>{status === "live" ? "Live stream" : status === "connecting" ? "Connecting" : "Reconnecting"}</span></div>
+          <button className="pane-toggle" type="button" aria-expanded={rightPaneOpen} aria-controls="right-pane"
+            aria-label={rightPaneOpen ? "Collapse right pane" : "Expand right pane"} title={rightPaneOpen ? "Collapse right pane" : "Expand right pane"}
+            onClick={() => setRightPaneOpen((open) => !open)}><Icon name="panel" /></button>
+        </div>
       </header>
-      <main className="dashboard">
-        {error && <p role="alert">{error}</p>}
-        <EventFeed events={events} selectedSession={selected} sessionTitle={sessionTitle} />
-      </main>
+      <div className="workspace" data-pane-open={rightPaneOpen}>
+        <main className="dashboard">
+          {error && <p role="alert">{error}</p>}
+          <EventFeed events={events} selectedSession={selected} sessionTitle={sessionTitle} />
+        </main>
+        <aside id="right-pane" className="right-pane" aria-label="Right pane" hidden={!rightPaneOpen} />
+      </div>
+      <footer className="bottom-bar" aria-label="Bottom bar" />
     </div>
   );
 }

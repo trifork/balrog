@@ -6,6 +6,7 @@ const paths = {
   search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></>,
   terminal: <><rect x="3" y="4" width="18" height="16" rx="3" /><path d="m7 9 3 3-3 3m6 0h4" /></>,
   shield: <><path d="m12 3 8 3v6c0 4-5 8-8 9-3-1-8-5-8-9V6l8-3Z" /><path d="m8 12 3 3 5-6" /></>,
+  panel: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M12 4v16" /></>,
 };
 
 export function Icon({ name }: { name: keyof typeof paths }) {
