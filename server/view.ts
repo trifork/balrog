@@ -1,4 +1,5 @@
 import * as path from "node:path";
+import { createServer } from "node:http";
 import { parseArgs } from "node:util";
 import { SessionAnalyzer } from "./analyzer.js";
 import { SQLiteEventStore } from "./event-store.js";
@@ -8,18 +9,19 @@ import { PermissionBroker } from "./permissions.js";
 
 const { values } = parseArgs({
   options: {
-    port: { type: "string", default: "5002" },
-    db: { type: "string" },
+    port: { type: "string", default: "5001" },
+    db: { type: "string", default: "balrog-sessions.db" },
   },
   allowPositionals: false,
   strict: true,
 });
 
-const webPort = Number(values.port);
+const port = Number(values.port);
 const permissions = new PermissionBroker();
-const receiver = new LogReceiver(permissions);
+const server = createServer();
+const receiver = new LogReceiver(permissions, server);
 const analyzer = new SessionAnalyzer();
-const viewer = new LogViewer(analyzer, permissions);
+const viewer = new LogViewer(analyzer, permissions, server);
 const store = values.db
   ? new SQLiteEventStore(path.resolve(values.db))
   : undefined;
@@ -39,9 +41,9 @@ receiver.subscribe((event) => {
   viewer.publish(event);
 });
 
-receiver.listen(5001, "localhost", () => {
-  console.log("Balrog event receiver listening on http://localhost:5001/log");
-});
-viewer.listen(webPort, "localhost", () => {
-  console.log(`Balrog live viewer available at http://localhost:${webPort}`);
+server.listen(port, "localhost", () => {
+  console.log(
+    `Balrog event receiver listening on http://localhost:${port}/log`,
+  );
+  console.log(`Balrog live viewer available at http://localhost:${port}`);
 });

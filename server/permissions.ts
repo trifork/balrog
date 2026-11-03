@@ -84,7 +84,8 @@ export class PermissionBroker {
 
   attach(server: Server): void {
     server.on("upgrade", (request, socket, head) => {
-      if (!isLoopbackHost(request.headers.host) || request.url !== "/permissions" || request.headers.origin !== undefined) {
+      if (request.url !== "/permissions") return;
+      if (!isLoopbackHost(request.headers.host) || request.headers.origin !== undefined) {
         socket.end("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
         return;
       }

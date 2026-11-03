@@ -22,13 +22,17 @@ export class LogViewer {
   private readonly subscribers = new Set<WebSocket>();
   private readonly sockets = new WebSocketServer({ noServer: true, maxPayload: 16_384 });
   private readonly server: Server;
+  private readonly ownsServer: boolean;
   private readonly unsubscribePermissions?: () => void;
 
-  constructor(private readonly analyzer = new SessionAnalyzer(), private readonly permissions?: PermissionBroker) {
+  constructor(private readonly analyzer = new SessionAnalyzer(), private readonly permissions?: PermissionBroker, server?: Server) {
     this.unsubscribePermissions = permissions?.subscribe(() => {
       for (const client of this.subscribers) this.send(client, { type: "permissions", permissions: permissions.list() });
     });
-    this.server = createServer((request, response) => {
+    this.ownsServer = server === undefined;
+    this.server = server ?? createServer();
+    this.server.on("request", (request, response) => {
+      if (!this.ownsServer && request.url === "/log") return;
       if (!isLoopbackHost(request.headers.host)) {
         response.writeHead(403);
         response.end("Forbidden host");
@@ -114,6 +118,7 @@ export class LogViewer {
         reject("400 Bad Request");
         return;
       }
+      if (pathname === "/permissions") return;
       if (pathname !== "/ws") {
         reject("404 Not Found");
         return;
@@ -186,6 +191,7 @@ export class LogViewer {
     for (const client of this.sockets.clients) client.terminate();
     this.subscribers.clear();
     this.sockets.close();
+    if (!this.ownsServer) return Promise.resolve();
     return new Promise((resolve, reject) => {
       this.server.close((error) => error ? reject(error) : resolve());
     });

@@ -32,7 +32,7 @@ This is a read-only review, not approval to apply its recommendations.
 
 ## 2. Retrieve evidence
 
-Fetch `GET http://localhost:5002/api/tool-executions?session=<encoded-session-id>`.
+Fetch `GET http://localhost:5001/api/tool-executions?session=<encoded-session-id>`.
 Always supply `session`, including for the current conversation. Use an endpoint
 override only when the user supplies one. The bundled helper performs this GET
 and sorts the unchanged execution records by `startedAt` ascending:

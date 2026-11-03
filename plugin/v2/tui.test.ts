@@ -42,7 +42,7 @@ describe("V2 sidebar session link", () => {
     render({ sessionID: "ses_123" });
 
     expect(sidebar.id).toBe("opencode-balrog");
-    expect(linkProps().href).toBe("http://localhost:5002/?session=ses_123");
+    expect(linkProps().href).toBe("http://localhost:5001/?session=ses_123");
     expect(linkProps().children).toBe(linkProps().href);
     expect(jsx).toHaveBeenCalledWith("b", { children: "Balrog" });
   });
@@ -76,9 +76,9 @@ describe("V2 sidebar session link", () => {
     render({ get sessionID() { return sessionID; } });
     const link = linkProps();
 
-    expect(link.href).toBe("http://localhost:5002/?session=ses_first");
+    expect(link.href).toBe("http://localhost:5001/?session=ses_first");
     sessionID = "ses_second";
-    expect(link.href).toBe("http://localhost:5002/?session=ses_second");
+    expect(link.href).toBe("http://localhost:5001/?session=ses_second");
     expect(link.children).toBe(link.href);
   });
 

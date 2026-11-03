@@ -143,7 +143,7 @@ The API versions and tracing differences are the same on Windows and Linux.
 
 The V2 directory also includes a TUI entrypoint that adds a **Balrog** section
 to OpenCode's session sidebar. Its link opens the frontend with the current
-session selected, for example `http://localhost:5002/?session=ses_123`. It stays
+session selected, for example `http://localhost:5001/?session=ses_123`. It stays
 available between prompts and updates when you switch sessions. OpenCode
 discovers this entrypoint automatically when the V2 plugin directory is configured;
 reload the plugin after updating Balrog.
@@ -163,7 +163,7 @@ the V2 plugin's other options:
 ```
 
 `viewerURL` must be an absolute HTTP or HTTPS URL reachable from your browser.
-It is independent of `logEndpoint` and defaults to `http://localhost:5002/`.
+It defaults to the same origin as `logEndpoint`, `http://localhost:5001/`.
 For frontend development, use `http://localhost:5173/`. Opening the link directly
 from the terminal requires terminal hyperlink support; otherwise copy the
 displayed URL into your browser. The sidebar integration is V2-only; the V1
@@ -222,11 +222,12 @@ Run the viewer instead of the recorder to receive events on the same
 npm run view
 ```
 
-This builds the React frontend and starts the viewer. The event receiver listens
-on port 5001, and the web page is served separately at
-<http://localhost:5002>. Open the page before or after starting OpenCode; it
+This builds the React frontend and starts one server at <http://localhost:5001>.
+The server receives events at `/log` and serves the live viewer, its APIs, and
+WebSockets from the same port. Open the page before or after starting OpenCode; it
 shows incoming events and events already received during this viewer process. To
-change the web page port, use `npm run view -- --port 8080`. By default the
+change the server port, use `npm run view -- --port 8080` and configure both
+`logEndpoint` and `viewerURL` with that origin. By default the
 viewer retains events in memory and does not write them to files. Events can
 include prompt text, tool arguments, and tool results, so the receiver and page
 bind to localhost by default.
@@ -355,8 +356,7 @@ prompt. Ordinary autoaccept settings remain unchanged. Requests show file paths
 and session identity, not file contents.
 
 The plugin connects over WebSocket to `/permissions` on the same origin as
-`logEndpoint` (`ws://localhost:5001/permissions` by default). Changing the viewer's
-web-page port does not change this endpoint. Setting `logEndpoint` to an empty
+`logEndpoint` (`ws://localhost:5001/permissions` by default). Setting `logEndpoint` to an empty
 string disables the connection and denies sensitive reads, since frontend
 approval is mandatory. The recorder-only `npm run record` process does not
 provide approval controls; use the viewer to approve sensitive reads.
@@ -369,21 +369,21 @@ native-only fallback. Interrupting a session or unloading the plugin denies its
 unresolved gates. After a plugin reload, retry any cancelled reads. Recorded or
 replayed permission events never create actionable requests. The plugin endpoint rejects
 browser Origin headers, while browser approval messages use the viewer's
-same-origin WebSocket. Both servers also restrict Host headers to `localhost`,
-`127.0.0.1`, or `[::1]` to prevent DNS rebinding. Keep both servers on localhost
+same-origin WebSocket. The server also restricts Host headers to `localhost`,
+`127.0.0.1`, or `[::1]` to prevent DNS rebinding. Keep the server on localhost
 and use only trusted local clients. Pre-existing native prompts remain mirrored
 for compatibility, separately from mandatory Balrog gates.
 
 The viewer also exposes the analyzer's session summaries as JSON at
-`http://localhost:5002/api/sessions` and an individual session at
-`http://localhost:5002/api/sessions/<sessionID>/summary`. `SessionAnalyzer` is available
+`http://localhost:5001/api/sessions` and an individual session at
+`http://localhost:5001/api/sessions/<sessionID>/summary`. `SessionAnalyzer` is available
 from `server/analyzer.ts`; call `process(event)` for each log event, then use
 `getSessionTitle(sessionID)`, `getSession(sessionID)`, or `getSessions()` to
 query its in-memory state. Session rename events update the remembered title.
 
 ### Session heatmap
 
-`GET http://localhost:5002/api/sessions/<sessionID>/heatmap` returns
+`GET http://localhost:5001/api/sessions/<sessionID>/heatmap` returns
 `{ schemaVersion: 1, sessionID, items }`, a chronological timeline of user prompts,
 file reads, changes, and grep searches. Commands and LLM text remain in raw logs
 but are excluded here. Types are defined in `server/session-activity.ts`; use
@@ -406,8 +406,8 @@ time, as indicated by `timestampSource`.
 The viewer exposes recorded V2 tool executions at:
 
 ```text
-GET http://localhost:5002/api/tool-executions
-GET http://localhost:5002/api/tool-executions?session=<sessionID>
+GET http://localhost:5001/api/tool-executions
+GET http://localhost:5001/api/tool-executions?session=<sessionID>
 ```
 
 Without `session`, the endpoint selects the single most recently active session
@@ -489,7 +489,7 @@ revise earlier reports.
 
 This is a read-only retrospective. It proposes changes and validation steps;
 applying them requires separate approval. Balrog must be reachable at
-`http://localhost:5002` unless the user supplies another endpoint. If the session
+`http://localhost:5001` unless the user supplies another endpoint. If the session
 is missing, the skill reports that instead of choosing another session.
 
 The source is `skills/retro/SKILL.md`; its portable Node helper is
@@ -629,8 +629,8 @@ npm test
 
 `npm run view-dev` starts the watched Node backend and Vite together. Open
 <http://localhost:5173> for frontend development; Vite proxies WebSockets and
-the session HTTP API to the backend on port 5002. The receiver remains on port
-5001. Stop both processes with Ctrl+C. `npm run build` only generates the static
+the session HTTP API to the unified backend on port 5001. Stop both processes
+with Ctrl+C. `npm run build` only generates the static
 frontend in `frontend/dist/`; generated files are not committed. For backend
 development on its own, use `npm run dev:server`.
 

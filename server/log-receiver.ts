@@ -76,21 +76,24 @@ export type LogEventListener = (event: LogEvent) => void;
 export class LogReceiver {
   private readonly listeners = new Set<LogEventListener>();
   private readonly server: Server;
+  private readonly ownsServer: boolean;
 
-  constructor(private readonly permissions?: PermissionBroker) {
-    this.server = createServer(async (request, response) => {
+  constructor(private readonly permissions?: PermissionBroker, server?: Server) {
+    this.ownsServer = server === undefined;
+    this.server = server ?? createServer();
+    this.server.on("request", async (request, response) => {
       const reply = (status: number, body: object) => {
         response.writeHead(status, { "Content-Type": "application/json" });
         response.end(JSON.stringify(body));
       };
 
-      if (!isLoopbackHost(request.headers.host)) {
-        reply(403, { error: "Forbidden host" });
+      if (request.url !== "/log") {
+        if (this.ownsServer) reply(404, { error: "Not found" });
         return;
       }
 
-      if (request.url !== "/log") {
-        reply(404, { error: "Not found" });
+      if (!isLoopbackHost(request.headers.host)) {
+        reply(403, { error: "Forbidden host" });
         return;
       }
 
@@ -144,6 +147,7 @@ export class LogReceiver {
 
   close(): Promise<void> {
     this.permissions?.close();
+    if (!this.ownsServer) return Promise.resolve();
     return new Promise((resolve, reject) => {
       this.server.close((error) => error ? reject(error) : resolve());
     });

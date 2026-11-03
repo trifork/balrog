@@ -7,7 +7,7 @@ const BalrogSidebar = {
     options: Readonly<Record<string, unknown>>;
     ui: Pick<Plugin.Context["ui"], "slot">;
   }) {
-    const viewerURL = options.viewerURL ?? "http://localhost:5002";
+    const viewerURL = options.viewerURL ?? "http://localhost:5001";
     if (typeof viewerURL !== "string") {
       throw new TypeError("Balrog viewerURL must be an HTTP or HTTPS URL");
     }

@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { createServer } from "node:http";
 import { connect as connectTCP } from "node:net";
 import { test, type TestContext } from "node:test";
 import WebSocket from "ws";
 import { SessionAnalyzer } from "../server/analyzer.js";
-import type { LogEvent } from "../server/log-receiver.js";
+import { LogReceiver, type LogEvent } from "../server/log-receiver.js";
 import { LogViewer } from "../server/viewer.js";
 import type { ViewerResponse } from "../shared/viewer-protocol.js";
 
@@ -126,6 +127,47 @@ async function request(socket: WebSocket, body: unknown): Promise<ViewerResponse
   const [data] = await response;
   return JSON.parse(String(data));
 }
+
+test("one server receives events and serves the live viewer", { timeout: 5_000 }, async (t) => {
+  const server = createServer();
+  const analyzer = new SessionAnalyzer();
+  const receiver = new LogReceiver(undefined, server);
+  const viewer = new LogViewer(analyzer, undefined, server);
+  receiver.subscribe((event) => {
+    analyzer.process(event);
+    viewer.publish(event);
+  });
+  await new Promise<void>((resolve) => server.listen(0, "localhost", resolve));
+  t.after(async () => {
+    await viewer.close();
+    await receiver.close();
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  });
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://localhost:${address.port}`;
+
+  const page = await fetch(origin);
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /id="root"/);
+  const event = nativeEvent("session.renamed", "shared-server", 100, { title: "Shared port" });
+  const logged = await fetch(`${origin}/log`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(event),
+  });
+  assert.equal(logged.status, 200);
+  assert.deepEqual(await logged.json(), { ok: true });
+
+  const socket = new WebSocket(`${origin.replace("http", "ws")}/ws`, { origin });
+  t.after(() => socket.terminate());
+  await once(socket, "open");
+  const snapshot = await request(socket, { type: "snapshot.request" });
+  assert.equal(snapshot.type, "snapshot");
+  if (snapshot.type !== "snapshot") return;
+  assert.equal(snapshot.sessions[0].title, "Shared port");
+  assert.deepEqual(snapshot.events[0].event, event);
+});
 
 test("viewer serves built React assets and preserves the session HTTP API", { timeout: 5_000 }, async (t) => {
   const { origin, publish } = await startViewer(t);

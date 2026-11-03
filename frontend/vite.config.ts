@@ -10,8 +10,8 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      "/ws": { target: "ws://localhost:5002", ws: true },
-      "/api": "http://localhost:5002",
+      "/ws": { target: "ws://localhost:5001", ws: true },
+      "/api": "http://localhost:5001",
     },
   },
   test: {
