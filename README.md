@@ -197,6 +197,11 @@ viewer retains events in memory and does not write them to files. Events can
 include prompt text, tool arguments, and tool results, so the receiver and page
 bind to localhost by default.
 
+The dashboard shows live event, session, and tool-call counts. Choose a session
+in the sidebar, search event content or commands, and filter by event type to
+narrow the feed. Expand **Raw event** to inspect the original JSON, or use
+**Collapse all** to compact the visible events. The layout also adapts to mobile.
+
 The viewer also exposes the analyzer's session summaries as JSON at
 `http://localhost:5002/api/sessions` and an individual session at
 `http://localhost:5002/api/sessions/<sessionID>`. `SessionAnalyzer` is available
