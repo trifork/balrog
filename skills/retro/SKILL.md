@@ -1,6 +1,6 @@
 ---
 name: retro
-description: Review a Balrog session and propose repository and AI-instruction improvements with evidence, complexity, and expected gain.
+description: Review a Balrog session, assess activated skills, and propose repository, AI-instruction, and skill-use improvements with evidence, complexity, and expected gain.
 disable-model-invocation: true
 compatibility: Requires HTTP GET and POST access to Balrog. The optional retrieval helper requires Node.js 18 or later.
 ---
@@ -8,7 +8,8 @@ compatibility: Requires HTTP GET and POST access to Balrog. The optional retriev
 # Balrog retrospective
 
 Use the recorded session to propose changes that make the repository easier for
-AI agents to navigate, understand, change, and verify. Produce the two tables
+AI agents to navigate, understand, change, and verify. Assess whether activated
+skills were appropriate and how their use should change. Produce the tables
 in [assets/retro-output.md](assets/retro-output.md). Read that editable Markdown
 template before composing the report. It owns the report layout and table
 columns; fill its placeholders and repeat rows as needed. Resolve it relative
@@ -141,10 +142,55 @@ Whether a workflow imposes excessive overhead belongs in the higher-level
 analysis, not in automatic criticism of required steps. Respect
 explicit constraints such as not adding or running tests.
 
-## 4. Propose higher-level improvements
+## 4. List and assess activated skills
+
+List each distinct activated skill in the reviewed snapshot in the template's
+activated-skills table. Use recorded successful skill loads and explicit skill
+attachments or activation context from the target conversation when available.
+Include skills loaded through wrappers when their arguments and results establish
+activation. A catalog of available skills, a mention, or a failed load is not proof
+that a skill was activated. Note repeated activations and their effects in the
+same row rather than duplicating the skill.
+
+Apply the same session and snapshot boundaries as the command review. Do not count
+skills activated only to perform this retrospective, including `retro` itself,
+as choices made during the original task. Do not use the reviewer's current skills
+as evidence for an older target session. Cite displayed call IDs for activations
+and observed effects; label conversation-only evidence explicitly when no call ID
+exists. Keep skill-use recommendations separate from the call assessments.
+
+Distinguish "no activated skills observed" from "no skills were activated". If
+activation history or attached-skill context is missing, mark coverage as unknown
+or partial rather than inventing a list. A failed load may support a recommendation
+but must remain identified as a failed attempt, not an activated skill.
+
+For each activated skill, assess:
+
+- Task fit: compare its documented scope and trigger with the original task,
+  constraints, and evidence available at activation time. If the skill content or
+  original task is unavailable, state that fit is unknown rather than guessing.
+- Contribution: use later calls to distinguish useful guidance from unnecessary
+  overhead, conflicting instructions, duplicate guidance, or misdirected work.
+  Separate a reasonable initial choice from its eventual effect. Respect required
+  or user-requested skill use; do not recommend bypassing mandatory instructions.
+- Future use: recommend `KEEP`, `NARROW`, `REPLACE`, or `STOP` with a concrete
+  trigger or condition. Use `UNKNOWN` when evidence cannot support a decision.
+  `STOP` means stop activating that skill for the evidenced task class, not delete
+  it or disable it globally. Recommend a replacement or a previously unused skill
+  only when its availability and documented relevance are verified.
+
+Carry actionable skill-use recommendations into the higher-level improvements
+table with a concrete routing or instruction change, evidence, complexity, gain,
+and validation. Include the most promising skill-use change in the final
+recommendation when warranted. Do not manufacture a change when keeping current
+use or deferring judgment is better supported.
+
+## 5. Propose higher-level improvements
 
 Add a separate table for improvements supported by patterns across calls,
 missing task entry points, instruction conflicts, or repository organization.
+A proposal may also refine when to use a skill, replace it, or stop using it for
+a task class, based on the activated-skills assessment.
 A proposal may also draw on one call when it supports a durable repository or
 AI-instruction improvement. It is not merely another command the agent could run.
 Collect each distinct proposal once in this table and cite its supporting calls.
@@ -191,7 +237,7 @@ Candidate improvement patterns include both instructions and general structure:
   repeatedly touch many coupled files for a small change. File moves alone are
   not proof of a clearer architecture.
 
-## 5. Publish the call assessments
+## 6. Publish the call assessments
 
 After completing the shared analysis, send one batch with an available HTTP tool:
 
@@ -227,9 +273,10 @@ On an HTTP error, unreachable server, or invalid acknowledgement, retain the rep
 Report whether publication succeeded and how many calls were published.
 Do not claim the frontend was updated unless publication succeeded.
 
-## 6. Finish with a testable recommendation
+## 7. Finish with a testable recommendation
 
-State the session ID, assessment coverage, excluded helper count, whether review-time
+State the session ID, assessment and skill-activation coverage, excluded helper
+count, whether review-time
 calls were excluded, and limits of the evidence. Show the cutoff timestamp only
 when asked. Keep recorded facts separate from estimates.
 Identify the smallest promising change and how a later comparable task would
@@ -237,6 +284,8 @@ test it: fewer wrong turns or repeated lookups, faster location of a relevant
 example, and preserved correctness and required verification. Fewer calls alone
 is not success. Note model, revision, or task differences that confound comparison.
 
+Do not enable, disable, install, or remove skills during `/retro`. Skill-use
+recommendations are proposals subject to the same separate approval as other changes.
 Do not edit files, restructure modules, modify original Balrog records, create
 issues, or commit changes during `/retro`. Ask for separate approval to apply a
 proposal. Only the call assessments are written back through the endpoint above.

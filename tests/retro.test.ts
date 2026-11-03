@@ -129,3 +129,29 @@ test("retro writes purposes directly and qualifies uncertainty based on evidence
   const template = await readFile(new URL("../skills/retro/assets/retro-output.md", import.meta.url), "utf8");
   assert.match(template, /evidence-supported purpose; unknown if unsupported/);
 });
+
+test("retro lists activated skills, assesses task fit, and proposes bounded skill-use changes", async (t) => {
+  const { skills } = await setup(t);
+  const content = skills[0].content;
+  const template = await readFile(new URL("../skills/retro/assets/retro-output.md", import.meta.url), "utf8");
+  assert.ok(skills[0].description);
+  assert.match(skills[0].description, /assess activated skills/);
+  assert.match(content, /List each distinct activated skill/);
+  assert.match(content, /recorded successful skill loads and explicit skill/);
+  assert.match(content, /A catalog of available skills, a mention, or a failed load is not proof/);
+  assert.match(content, /Do not count\s+skills activated only to perform this retrospective/);
+  assert.match(content, /reviewer's current skills/);
+  assert.match(content, /mark coverage as unknown\s+or partial/);
+  assert.match(content, /Task fit: compare its documented scope and trigger/);
+  assert.match(content, /Respect required\s+or user-requested skill use/);
+  assert.match(content, /`KEEP`, `NARROW`, `REPLACE`, or `STOP`/);
+  assert.match(content, /Use `UNKNOWN` when evidence cannot support a decision/);
+  assert.match(content, /not delete\s+it or disable it globally/);
+  assert.match(content, /availability and documented relevance are verified/);
+  assert.match(content, /Carry actionable skill-use recommendations into the higher-level improvements/);
+  assert.match(content, /Do not enable, disable, install, or remove skills during `\/retro`/);
+  assert.match(template, /Skill-activation coverage:/);
+  assert.match(template, /## Activated skills/);
+  assert.ok(template.includes("| skill | activation evidence | task fit and contribution | future use |"));
+  assert.match(template, /including actionable skill-use changes/);
+});
