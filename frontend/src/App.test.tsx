@@ -55,7 +55,7 @@ afterEach(() => {
 test("prioritizes the heatmap and reveals newest-first events, command previews and safe raw details", async () => {
   const user = userEvent.setup();
   const { container } = render(<App />);
-  expect(screen.getByRole("heading", { name: "Files touched per prompt" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "File heatmap" })).toBeTruthy();
   expect(container.querySelector("#total-files")?.textContent).toBe("0");
   expect(container.querySelector("#total-prompts")?.textContent).toBe("0");
   expect(container.querySelector("#total-operations")?.textContent).toBe("0");
@@ -224,7 +224,7 @@ test("read approvals remain visible when a different session and event filters a
 test("timeline scrubbing reveals the event drawer and Go live restores incoming events", async () => {
   const user = userEvent.setup();
   const { rerender } = render(<App />);
-  expect(screen.getByRole("heading", { name: "Files touched per prompt" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "File heatmap" })).toBeTruthy();
   const slider = screen.getByRole("slider", { name: "Scrub to event" });
   expect(slider.getAttribute("aria-valuenow")).toBe("4");
   fireEvent.keyDown(slider, { key: "Home" });
@@ -296,4 +296,34 @@ test("timeline remains stable when a related file has no events in the next prom
   expect(screen.queryByRole("slider", { name: "Scrub to event" })).toBeNull();
   expect(screen.getByText("No recorded activity for this file in this prompt.")).toBeTruthy();
   expect(commits).toBeLessThan(40);
+});
+
+test("heatmap prompt navigation centers the timeline without retaining an older playback cutoff", async () => {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(400);
+  const user = userEvent.setup();
+  const first = { id: "1", sessionID: "s1", text: "First prompt", files: [] };
+  const second = { id: "2", sessionID: "s1", text: "Second prompt", files: [] };
+  state.events = [
+    { ...message(1, "session.inbox.delivered", "s1"), fileActivity: first },
+    { ...message(2, "session.tool.success", "s1"), fileActivity: first },
+    { ...message(3, "session.inbox.delivered", "s1"), fileActivity: second },
+    { ...message(4, "session.tool.success", "s1"), fileActivity: second },
+  ];
+  render(<App />);
+  const slider = screen.getByRole("slider", { name: "Scrub to event" });
+  fireEvent.keyDown(slider, { key: "Home" });
+  expect(cards()).toHaveLength(1);
+  const heatmap = within(screen.getByRole("table", { name: "File operations by prompt" }));
+  await user.click(heatmap.getByRole("button", { name: /^Prompt 02:/ }));
+  expect(cards()).toHaveLength(2);
+  expect(slider.getAttribute("aria-valuenow")).toBe("1");
+  expect(Number.parseFloat(slider.style.left) - slider.parentElement!.parentElement!.scrollLeft).toBe(200);
+  const inspector = within(screen.getByRole("complementary", { name: "Selected prompt and file" }));
+  await user.click(inspector.getByRole("button", { name: "Previous prompt" }));
+  expect(inspector.getByRole("heading", { name: "First prompt" })).toBeTruthy();
+  expect(slider.getAttribute("aria-valuenow")).toBe("1");
+  expect(Number.parseFloat(slider.style.left) - slider.parentElement!.parentElement!.scrollLeft).toBe(200);
+  await user.click(screen.getByRole("button", { name: "All prompts" }));
+  expect(cards()).toHaveLength(4);
+  expect(slider.getAttribute("aria-valuenow")).toBe("4");
 });

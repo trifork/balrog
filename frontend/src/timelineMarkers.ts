@@ -1,4 +1,5 @@
 import { eventKind } from "./EventCard";
+import { collectActivity, promptNumber, type ActivityPrompt } from "./file-activity-model";
 import type { ReceivedEvent } from "./useViewer";
 
 type TimelineIcon = "hammer" | "fileEdit" | "filePlus" | "fileMinus" | "terminal" | "prompt";
@@ -10,6 +11,7 @@ export interface TimelineMarker {
   color: string;
   summary: string;
   isPrompt: boolean;
+  promptNumber?: string;
 }
 
 const icons: Record<TimelineIcon, { label: string; color: string }> = {
@@ -101,14 +103,6 @@ function describeEvent(message: ReceivedEvent) {
   const showsIcon = isToolCall || isCommandCall || isFileOperation;
   const callID = text(data.callID, data.toolCallID, input?.callID, data.id);
   const sessionID = text(envelope.sessionID, data.sessionID, input?.sessionID, message.session?.sessionID);
-  const item = object(data.item);
-  const userMessage = object(data.message) ?? object(output?.message) ?? object(data.info);
-  const role = text(data.role, userMessage?.role, input?.role);
-  const isPrompt = tag === "session.inbox.enqueued" ? item?.type === "user"
-    : tag === "chat.message" ? role !== "assistant"
-    : /^session\.prompt(?:\.submitted)?$/i.test(tag) || role === "user" && /^(?:session\.text\.(?:started|ended)|message\.(?:created|updated))$/i.test(tag);
-  const promptID = text(data.inboxID, data.messageID, userMessage?.id) ?? String(message.id);
-  const promptKey = isPrompt ? JSON.stringify([envelope.pluginID, sessionID, promptID]) : undefined;
   const key = isTool && callID ? JSON.stringify([envelope.pluginID, sessionID, callID]) : undefined;
   let icon: TimelineIcon | undefined;
 
@@ -126,25 +120,26 @@ function describeEvent(message: ReceivedEvent) {
   }
   if (!icon && isCommandCall) icon = "terminal";
 
-  return { tag, key, icon, isToolCall, showsIcon, tool, promptKey, summary: eventSummary(message, data, args, metadata) };
+  return { tag, key, icon, isToolCall, showsIcon, tool, summary: eventSummary(message, data, args, metadata) };
 }
 
-export function timelineMarkers(events: ReceivedEvent[]): TimelineMarker[] {
+export function timelineMarkers(events: ReceivedEvent[], prompts: ActivityPrompt[] = collectActivity(events, "")): TimelineMarker[] {
   const descriptions = events.map(describeEvent);
   const calls = new Map<string, TimelineIcon>();
-  const seenPrompts = new Set<string>();
+  const boundaries = new Map(prompts.map((prompt, index) => [prompt.startEventID, { prompt, index }]));
   for (const description of descriptions) {
     if (description.key && description.icon) calls.set(description.key, description.icon);
   }
-  return descriptions.map(({ tag, key, icon, isToolCall, showsIcon, tool, promptKey, summary }) => {
-    const isPrompt = Boolean(promptKey && !seenPrompts.has(promptKey));
-    if (promptKey) seenPrompts.add(promptKey);
+  return descriptions.map(({ tag, key, icon, isToolCall, showsIcon, tool, summary }, index) => {
+    const boundary = boundaries.get(events[index].id);
+    const isPrompt = Boolean(boundary);
     icon = showsIcon ? (key ? calls.get(key) : undefined) ?? icon ?? (isToolCall ? "hammer" : undefined) : undefined;
     if (isPrompt) icon = "prompt";
     const kind = eventKind(tag);
-    const label = icon ? `${icons[icon].label}${tool && !isPrompt ? ` · ${tool}` : ""}` : tag;
+    const number = boundary ? promptNumber(boundary.index) : undefined;
+    const label = boundary ? `Prompt ${number}` : icon ? `${icons[icon].label}${tool ? ` · ${tool}` : ""}` : tag;
     const color = kind === "error" ? "#ed8e8e" : icon ? icons[icon].color
       : kind === "prompt" ? "#b7a0e9" : kind === "success" ? "#8acba4" : "#686a75";
-    return { icon, label, color, isPrompt, summary: summary ?? tag.replace(/[._-]+/g, " ").replace(/^./, (letter) => letter.toUpperCase()) };
+    return { icon, label, color, isPrompt, promptNumber: number, summary: boundary?.prompt.activity.text ?? summary ?? tag.replace(/[._-]+/g, " ").replace(/^./, (letter) => letter.toUpperCase()) };
   });
 }

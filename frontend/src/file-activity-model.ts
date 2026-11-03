@@ -10,6 +10,7 @@ export interface ActivityPrompt {
   eventIDs: Set<number>;
   fileEventIDs: Map<string, Set<number>>;
   pluginID: string;
+  startEventID: number;
   timestamp?: number;
 }
 
@@ -58,6 +59,7 @@ export function collectActivity(events: ViewerMessage[], selectedSession: string
         prompt = {
           key, activity, files: new Map(), eventIDs: new Set(), fileEventIDs: new Map(),
           pluginID: message.event.pluginID,
+          startEventID: message.id,
           timestamp: Number.isFinite(message.event.created) ? message.event.created : undefined,
         };
         retained.set(key, prompt);
@@ -99,6 +101,52 @@ export function collectActivity(events: ViewerMessage[], selectedSession: string
     }
   }
   return [...retained.values()];
+}
+
+export function aggregateActivity(prompts: ActivityPrompt[]): ActivityPrompt | undefined {
+  if (!prompts.length) return undefined;
+  const files = new Map<string, FileTouch[]>();
+  const eventIDs = new Set<number>();
+  const fileEventIDs = new Map<string, Set<number>>();
+  for (const prompt of prompts) {
+    for (const [path, touches] of prompt.files) {
+      const entries = files.get(path) ?? [];
+      entries.push(...touches.map((touch) => ({
+        ...touch, callID: JSON.stringify([prompt.pluginID, prompt.key, touch.callID]),
+      })));
+      files.set(path, entries);
+    }
+    for (const id of prompt.eventIDs) eventIDs.add(id);
+    for (const [path, ids] of prompt.fileEventIDs) {
+      const retained = fileEventIDs.get(path) ?? new Set<number>();
+      for (const id of ids) retained.add(id);
+      fileEventIDs.set(path, retained);
+    }
+  }
+  const sessionIDs = new Set(prompts.map((prompt) => prompt.activity.sessionID));
+  return {
+    key: "session-overview", pluginID: "", startEventID: prompts[0].startEventID,
+    activity: {
+      id: "session-overview", sessionID: sessionIDs.size === 1 ? prompts[0].activity.sessionID : "",
+      text: "All prompts", files: [...files.values()].flat(),
+    },
+    files, eventIDs, fileEventIDs,
+  };
+}
+
+export function changeBreakdown(touches: FileTouch[]) {
+  const counts = { created: 0, edited: 0, deleted: 0, total: 0 };
+  const seen = new Set<string>();
+  for (const touch of touches) {
+    if (touch.outcome !== "success" || touch.reverted || touch.action === "read") continue;
+    const key = JSON.stringify([touch.path, touch.callID, touch.action]);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const kind = touch.action === "created" ? "created" : touch.action === "deleted" ? "deleted" : "edited";
+    counts[kind] += 1;
+    counts.total += 1;
+  }
+  return counts;
 }
 
 export function matchesMode(touch: FileTouch, mode: ActivityMode): boolean {

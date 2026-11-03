@@ -244,17 +244,24 @@ live sensitive-read gates in OpenCode V2; historical events are read-only.
 File-tree state is attached as `fileActivity`; when one event affects several
 prompts, additional prompt snapshots are included in `fileActivityUpdates`.
 
-The dashboard centers **Files touched per prompt**: a live heatmap with observed
+The dashboard centers **File heatmap**: a live heatmap with observed
 files as rows and recorded prompts as columns. Choose a session using the header
 tabs, or use **All sessions** to see activity across sessions. Search full file
 paths, collapse folders, and switch between **All activity**, **Reads**, and
 **Changes**. Cell intensity counts successful file operations on a fixed scale
-(0, 1, 2–3, 4–7, 8+); column totals count distinct matching files. The session
+(0, 1, 2–3, 4–7, 8+). The session
 totals show observed files, prompts, and successful file operations.
 
-Select a prompt heading or a cell to pin its details in the inspector;
-**Follow latest** resumes following incoming prompts. Late tool outcomes and
-undo/redo updates refresh their original columns without moving the selection.
+The inspector initially aggregates all prompts in the selected session while the
+heatmap keeps every prompt column visible. Select a prompt candle or a cell to
+filter the inspector and related events. Select the candle again or choose
+**All prompts** to restore the session summary. Candles stack green creations,
+blue edits (including writes), and red deletions in proportion to successful,
+unreverted file-change operations. Height and the number above each candle show
+change volume; hover for counts and percentages. Reads, pending and failed
+attempts, and reverted actions do not contribute to these proportions. Prompts
+with no confirmed changes retain a neutral, clickable candle. Late tool outcomes
+and undo/redo updates refresh their original columns without moving the selection.
 Arrow keys move between cells, and Enter or Space selects one. On mobile, the
 inspector opens as a dismissible bottom sheet.
 
@@ -293,7 +300,9 @@ visible events. Search, filters, and expanded raw details survive live updates.
 
 The bottom timeline follows the filtered event stream. Select an event to open
 the stream and pause playback at that point, or use the prompt-navigation
-buttons and keyboard arrows to move through it. **Go live** resumes incoming
+buttons and keyboard arrows to move through it. Numbered prompt markers use the
+same boundaries as the file heatmap, and previous/next prompt navigation centers
+the handle, including at the first and last events. **Go live** resumes incoming
 events. Playback only pauses the event display; recording, the file heatmap,
 and live read approvals continue updating.
 

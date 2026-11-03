@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { EventCard, eventKind } from "./EventCard";
 import { Icon } from "./Icon";
 import { StatusDot } from "./StatusDot";
@@ -12,9 +12,10 @@ interface Props {
   activeEventID?: number;
   cutoffEventID?: number;
   onVisibleEventsChange?: (events: ReceivedEvent[]) => void;
+  jumpRequest?: { id: number };
 }
 
-export function EventFeed({ events, selectedSession, sessionTitle, eventIDs, activeEventID, cutoffEventID, onVisibleEventsChange }: Props) {
+export function EventFeed({ events, selectedSession, sessionTitle, eventIDs, activeEventID, cutoffEventID, onVisibleEventsChange, jumpRequest }: Props) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [collapse, setCollapse] = useState({ defaultValue: false, overrides: new Map<number, boolean>() });
@@ -38,6 +39,12 @@ export function EventFeed({ events, selectedSession, sessionTitle, eventIDs, act
   const allCollapsed = contentEvents.length > 0 && contentEvents.every((message) => isCollapsed(message.id));
   const filtered = events.length > 0 || Boolean(selectedSession || query || filter !== "all");
   const visibleIDs = new Set(visible.map((message) => message.id));
+
+  useLayoutEffect(() => {
+    if (!jumpRequest) return;
+    setSearch("");
+    setFilter("all");
+  }, [jumpRequest]);
 
   useEffect(() => {
     onVisibleEventsChange?.([...matching].reverse());

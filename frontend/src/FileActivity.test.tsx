@@ -43,7 +43,7 @@ test("heat counts successful operations, distinct files, and separate pending an
   expect(cell("src/new.ts").getAttribute("data-heat")).toBe("0");
   expect(cell("src/new.ts").getAttribute("data-pending")).toBe("true");
   expect(cell("src/gone.ts").getAttribute("data-failed")).toBe("true");
-  expect(promptButton("01").title).toContain("1 files");
+  expect(promptButton("01").title).toContain("1 file");
   const list = within(inspector().getByRole("list", { name: "Touched files" }));
   expect(list.getAllByText("Read")).toHaveLength(1);
   for (const badge of ["Edit", "Write", "Added (pending)", "Deleted (failed)"]) expect(list.getByText(badge)).toBeTruthy();
@@ -55,27 +55,33 @@ test("heat counts successful operations, distinct files, and separate pending an
   expect(cell("src/new.ts").getAttribute("data-pending")).toBe("true");
 });
 
-test("preserves prompt order across late outcomes, pins history and resumes following", async () => {
+test("defaults to a session aggregate, preserves prompt filters across updates, and resets to all prompts", async () => {
   const user = userEvent.setup();
   const first: PromptActivity = { id: "1", sessionID: "s1", text: "First prompt", files: [] };
   const second: PromptActivity = { id: "2", sessionID: "s1", text: "Second prompt", files: [] };
   const completed: PromptActivity = { ...first, files: [{ path: "old.ts", action: "modified", outcome: "success", callID: "c1" }] };
   const events = [message(1, first), message(2, second), message(3, completed)];
   const { rerender } = render(<FileActivity events={events} sessions={[]} selectedSession="" />);
-  expect(promptButton("02").getAttribute("aria-pressed")).toBe("true");
-  expect(inspector().queryByText("old.ts")).toBeNull();
+  expect(promptButton("02").getAttribute("aria-pressed")).toBe("false");
+  expect(screen.getByRole("button", { name: "All prompts" }).getAttribute("aria-pressed")).toBe("true");
+  expect(inspector().getByText("old.ts")).toBeTruthy();
   expect(cell("old.ts", "01").textContent).toBe("1");
   await user.click(promptButton("01"));
   expect(inspector().getByText("old.ts")).toBeTruthy();
   const third: PromptActivity = { id: "3", sessionID: "s1", text: "Third prompt", files: [] };
   rerender(<FileActivity events={[...events, message(4, third)]} sessions={[]} selectedSession="" />);
   expect(promptButton("01").getAttribute("aria-pressed")).toBe("true");
-  await user.click(screen.getByRole("button", { name: "Follow latest" }));
-  expect(promptButton("03").getAttribute("aria-pressed")).toBe("true");
-  expect(screen.getByRole("button", { name: "Following latest" }).getAttribute("aria-pressed")).toBe("true");
+  await user.click(screen.getByRole("button", { name: "All prompts" }));
+  expect(promptButton("03").getAttribute("aria-pressed")).toBe("false");
+  expect(screen.getByRole("button", { name: "All prompts" }).getAttribute("aria-pressed")).toBe("true");
+  expect(inspector().getByRole("heading", { name: "All prompts" })).toBeTruthy();
+  await user.click(promptButton("02"));
+  expect(inspector().queryByText("old.ts")).toBeNull();
+  await user.click(promptButton("02"));
+  expect(inspector().getByText("old.ts")).toBeTruthy();
 });
 
-test("undo and redo update an older column without moving a pinned or following selection", async () => {
+test("undo and redo update an older column without changing the session summary or selected filter", async () => {
   const user = userEvent.setup();
   const first: PromptActivity = { id: "1", sessionID: "s1", text: "First prompt", files: [
     { path: "src/app.ts", action: "modified", outcome: "success", callID: "edit" },
@@ -87,7 +93,7 @@ test("undo and redo update an older column without moving a pinned or following 
   const reverted: PromptActivity = { ...first, files: first.files.map((file) => file.callID === "edit" ? { ...file, reverted: true } : file) };
   const update = { ...message(3, second), fileActivityUpdates: [reverted] };
   rerender(<FileActivity events={[...events, update]} sessions={[]} selectedSession="" />);
-  expect(promptButton("02").getAttribute("aria-pressed")).toBe("true");
+  expect(promptButton("02").getAttribute("aria-pressed")).toBe("false");
   expect(cell("src/app.ts").textContent).toBe("1");
   expect(cell("src/app.ts").getAttribute("data-reverted")).toBe("true");
   await user.click(screen.getByRole("button", { name: "Changes" }));
@@ -130,7 +136,7 @@ test("supports keyboard cell navigation and selecting a file without pointer inp
   cell("app.ts", "02").focus();
   await user.keyboard("{ArrowLeft}");
   expect(document.activeElement).toBe(cell("app.ts", "01"));
-  expect(promptButton("02").getAttribute("aria-pressed")).toBe("true");
+  expect(promptButton("02").getAttribute("aria-pressed")).toBe("false");
   await user.keyboard("{Enter}");
   expect(cell("app.ts", "01").getAttribute("aria-pressed")).toBe("true");
   expect(inspector().getByRole("heading", { name: "app.ts" })).toBeTruthy();
@@ -147,7 +153,8 @@ test("keeps same-ID prompts isolated across sessions and reconstructs replacemen
   await user.click(promptButton("01"));
   rerender(<FileActivity events={events} sessions={[]} selectedSession="s2" />);
   expect(matrix().queryByText("a.ts")).toBeNull();
-  expect(inspector().getByRole("heading", { name: "Second session prompt" })).toBeTruthy();
+  expect(inspector().getByRole("heading", { name: "All prompts" })).toBeTruthy();
+  expect(inspector().getByText("b.ts")).toBeTruthy();
   rerender(<FileActivity events={[message(2, { ...b, files: [...b.files, ...b.files] })]} sessions={[]} selectedSession="s2" />);
   expect(container.querySelector("#total-operations")?.textContent).toBe("1");
 });
@@ -155,10 +162,11 @@ test("keeps same-ID prompts isolated across sessions and reconstructs replacemen
 test("shows empty states and safely renders prompt and file text", () => {
   const { rerender, container } = render(<FileActivity events={[]} sessions={[]} selectedSession="" />);
   expect(screen.getByRole("heading", { name: "Ready when you are" })).toBeTruthy();
-  expect((screen.getByRole("button", { name: "Following latest" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByRole("button", { name: "All prompts" }).getAttribute("aria-pressed")).toBe("true");
   const prompt: PromptActivity = { id: "1", sessionID: "s1", text: "<img src=x onerror=alert(1)>", files: [] };
   rerender(<FileActivity events={[message(1, prompt)]} sessions={[]} selectedSession="" />);
-  expect(inspector().getByText("No explicit file activity recorded for this prompt yet.")).toBeTruthy();
+  expect(inspector().getByText("No explicit file activity recorded for this session yet.")).toBeTruthy();
+  expect(promptButton("01").getAttribute("aria-label")).toContain("<img src=x onerror=alert(1)>");
   rerender(<FileActivity events={[message(2, { ...prompt, files: [{ path: "<script>alert(1)</script>.ts", action: "read", outcome: "success", callID: "c1" }] })]} sessions={[]} selectedSession="" />);
   expect(inspector().getByText("1 file touched / 0 confirmed changed")).toBeTruthy();
   expect(container.querySelector("img, script")).toBeNull();
@@ -232,4 +240,54 @@ test("Git status and shell cleanup do not invent reverted file actions", () => {
   render(<FileActivity events={events} sessions={[]} selectedSession="" />);
   expect(inspector().queryByText("Edit (Reverted)")).toBeNull();
   expect(inspector().getByText("2 files touched / 2 confirmed changed")).toBeTruthy();
+});
+
+test("candles show confirmed change proportions and explain prompt filtering without hiding columns", async () => {
+  const user = userEvent.setup();
+  const first: PromptActivity = { id: "1", sessionID: "s1", text: "Mixed changes", files: [
+    { path: "added.ts", action: "created", outcome: "success", callID: "a" },
+    { path: "edited.ts", action: "modified", outcome: "success", callID: "b" },
+    { path: "written.ts", action: "written", outcome: "success", callID: "c" },
+    { path: "deleted.ts", action: "deleted", outcome: "success", callID: "d" },
+    { path: "read.ts", action: "read", outcome: "success", callID: "r" },
+    { path: "pending.ts", action: "created", outcome: "pending", callID: "p" },
+    { path: "failed.ts", action: "deleted", outcome: "failed", callID: "f" },
+    { path: "undone.ts", action: "modified", outcome: "success", callID: "u", reverted: true },
+  ] };
+  const second: PromptActivity = { id: "2", sessionID: "s1", text: "Read only", files: [
+    { path: "read.ts", action: "read", outcome: "success", callID: "r2" },
+  ] };
+  render(<FileActivity events={[message(1, first), message(2, second)]} sessions={[]} selectedSession="" />);
+  expect(screen.getByText("Click a candle to filter by prompt")).toBeTruthy();
+  const candle = promptButton("01");
+  expect(candle.title).toContain("1 creation (25%)");
+  expect(candle.title).toContain("2 edits (50%)");
+  expect(candle.title).toContain("1 deletion (25%)");
+  for (const [kind, percent] of [["created", 25], ["edited", 50], ["deleted", 25]] as const) {
+    expect((candle.querySelector(`[data-change="${kind}"]`) as HTMLElement).style.height).toBe(`${percent}%`);
+  }
+  expect(promptButton("02").title).toContain("No confirmed changes");
+  expect(promptButton("02").querySelectorAll("[data-change]")).toHaveLength(0);
+  await user.click(candle);
+  expect(inspector().getByRole("heading", { name: "Mixed changes" })).toBeTruthy();
+  expect(matrix().getAllByRole("button", { name: /^Prompt \d+:/ })).toHaveLength(2);
+  await user.click(screen.getByText("Event stream", { selector: "summary span" }));
+  expect(within(screen.getByRole("region", { name: "Session events" })).getAllByRole("article")).toHaveLength(1);
+  await user.click(screen.getByRole("button", { name: "All prompts" }));
+  expect(within(screen.getByRole("region", { name: "Session events" })).getAllByRole("article")).toHaveLength(2);
+});
+
+test("session-wide file details remain scoped and aggregate matching files across prompts", async () => {
+  const user = userEvent.setup();
+  const first: PromptActivity = { id: "1", sessionID: "s1", text: "First", files: [
+    { path: "app.ts", action: "created", outcome: "success", callID: "same" },
+  ] };
+  const second: PromptActivity = { ...first, id: "2", text: "Second", files: [
+    { path: "app.ts", action: "modified", outcome: "success", callID: "same" },
+  ] };
+  render(<FileActivity events={[message(1, first), message(2, second)]} sessions={[]} selectedSession="" />);
+  await user.click(inspector().getByRole("button", { name: /app.ts/ }));
+  expect(inspector().getByRole("heading", { name: "app.ts" })).toBeTruthy();
+  expect(inspector().getByRole("list", { name: "Recorded file operations" }).children).toHaveLength(2);
+  expect(screen.getByRole("button", { name: "All prompts" }).getAttribute("aria-pressed")).toBe("true");
 });

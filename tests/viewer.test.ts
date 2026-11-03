@@ -132,7 +132,7 @@ test("viewer serves built React assets and preserves the session HTTP API", { ti
   const page = await fetch(`${origin}/?session=session-viewer`);
   assert.equal(page.status, 200);
   const html = await page.text();
-  assert.match(html, /Balrog log events/);
+  assert.match(html, /<title>Balrog — File heatmap<\/title>/);
   assert.match(html, /id="root"/);
   assert.doesNotMatch(html, /EventSource|createElement\('article'\)/);
   const scriptPath = html.match(/src="([^"]+\.js)"/)?.[1];

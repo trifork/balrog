@@ -5,6 +5,7 @@ import type { ReceivedEvent } from "./useViewer";
 interface Props {
   events: ReceivedEvent[];
   activeEventID?: number;
+  centerRequest?: { id: number };
   onSelect: (id: number) => void;
   markerWidths?: readonly number[];
 }
@@ -18,7 +19,7 @@ interface Drag {
   started: boolean;
 }
 
-export function useTimelineScrubber({ events, activeEventID, onSelect, markerWidths }: Props) {
+export function useTimelineScrubber({ events, activeEventID, centerRequest, onSelect, markerWidths }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLButtonElement>(null);
   const dragRef = useRef<Drag | null>(null);
@@ -34,6 +35,7 @@ export function useTimelineScrubber({ events, activeEventID, onSelect, markerWid
     : Math.max(0, events.reduce((index, message, current) => message.id <= activeEventID ? current : index, -1));
   const indexRef = useRef(activeIndex);
   const positionRef = useRef(activeIndex);
+  const centerRequestRef = useRef<number | undefined>(undefined);
   const layout = useMemo(() => timelineLayout(events.length, activeIndex, viewportWidth, markerWidths), [events.length, activeIndex, viewportWidth, markerWidths]);
   const inputRef = useRef({ events, onSelect, layout });
   const firstEventID = events[0]?.id;
@@ -74,12 +76,17 @@ export function useTimelineScrubber({ events, activeEventID, onSelect, markerWid
     if (!viewport) return;
     const position = layout.positions[activeIndex];
     if (position !== undefined) {
-      const inset = Math.min(32, viewport.clientWidth / 3);
-      if (position < viewport.scrollLeft + inset) viewport.scrollLeft = position - inset;
-      else if (position > viewport.scrollLeft + viewport.clientWidth - inset) viewport.scrollLeft = position - viewport.clientWidth + inset;
+      if (centerRequest || centerRequestRef.current === activeIndex) {
+        viewport.scrollLeft = Math.max(0, position - viewport.clientWidth / 2);
+        centerRequestRef.current = undefined;
+      } else {
+        const inset = Math.min(32, viewport.clientWidth / 3);
+        if (position < viewport.scrollLeft + inset) viewport.scrollLeft = position - inset;
+        else if (position > viewport.scrollLeft + viewport.clientWidth - inset) viewport.scrollLeft = position - viewport.clientWidth + inset;
+      }
     }
     updateFade();
-  }, [activeIndex, layout, updateFade]);
+  }, [activeIndex, layout, centerRequest, updateFade]);
 
   const hideTooltip = useCallback(() => {
     if (tooltipTimerRef.current !== null) clearTimeout(tooltipTimerRef.current);
@@ -123,10 +130,18 @@ export function useTimelineScrubber({ events, activeEventID, onSelect, markerWid
     if (drag?.started && message) showTooltip(message.id);
   }, [showTooltip]);
 
-  const jumpToIndex = useCallback((index: number) => {
+  const jumpToIndex = useCallback((index: number, center = false) => {
     endDrag();
-    selectIndex(index, true);
-  }, [endDrag, selectIndex]);
+    const next = Math.max(0, Math.min(inputRef.current.events.length - 1, index));
+    centerRequestRef.current = center ? next : undefined;
+    selectIndex(next, true);
+    const viewport = viewportRef.current;
+    const position = inputRef.current.layout.positions[next];
+    if (center && viewport && position !== undefined) {
+      viewport.scrollLeft = Math.max(0, position - viewport.clientWidth / 2);
+      updateFade();
+    }
+  }, [endDrag, selectIndex, updateFade]);
 
   const beginDrag = useCallback(() => {
     const drag = dragRef.current;
@@ -176,17 +191,21 @@ export function useTimelineScrubber({ events, activeEventID, onSelect, markerWid
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     const marker = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("[data-event-id]") : null;
+    const handle = event.target instanceof Element && Boolean(event.target.closest('[role="slider"]'));
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const position = event.clientX - bounds.left + event.currentTarget.scrollLeft;
+    const index = Math.round(moveTimelinePosition(layout.positions, 0, position - layout.positions[0]));
     dragRef.current = {
       pointerID: event.pointerId,
       clientX: event.clientX,
       startX: event.clientX,
       startY: event.clientY,
-      candidateID: marker ? Number(marker.dataset.eventId) : undefined,
+      candidateID: marker ? Number(marker.dataset.eventId) : events[handle ? activeIndex : index]?.id,
       started: false,
     };
     wheelRef.current = 0;
     if (marker) marker.focus({ preventScroll: true });
-    else beginDrag();
+    else handleRef.current?.focus({ preventScroll: true });
   };
 
   const moveDrag = (event: PointerEvent<HTMLDivElement>) => {
@@ -212,7 +231,7 @@ export function useTimelineScrubber({ events, activeEventID, onSelect, markerWid
     endDrag();
     if (candidateID !== undefined) {
       const index = inputRef.current.events.findIndex((message) => message.id === candidateID);
-      if (index >= 0) selectIndex(index, true);
+      if (index >= 0) jumpToIndex(index, true);
     }
   };
 
@@ -238,8 +257,7 @@ export function useTimelineScrubber({ events, activeEventID, onSelect, markerWid
     };
     if (!(event.key in destinations)) return;
     event.preventDefault();
-    endDrag();
-    selectIndex(destinations[event.key], true);
+    jumpToIndex(destinations[event.key], event.key === "Enter" || event.key === " ");
   };
 
   const tooltipVisible = tooltipEventID !== undefined && tooltipEventID === events[activeIndex]?.id;

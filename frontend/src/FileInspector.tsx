@@ -8,7 +8,6 @@ interface Props {
   index: number;
   total: number;
   selectedFile: string | null;
-  following: boolean;
   sessionTitle: string;
   eventCount: number;
   mobileOpen: boolean;
@@ -25,7 +24,8 @@ function FileBadges({ touches }: { touches: FileTouch[] }) {
     title={touch.reverted ? "This recorded action was reverted." : undefined}>{actionLabel(touch)}</span>)}</span>;
 }
 
-export function FileInspector({ prompt, index, total, selectedFile, following, sessionTitle, eventCount, mobileOpen, closeRef, onClose, onNavigate, onSelectFile, onInspect }: Props) {
+export function FileInspector({ prompt, index, total, selectedFile, sessionTitle, eventCount, mobileOpen, closeRef, onClose, onNavigate, onSelectFile, onInspect }: Props) {
+  const overview = index < 0;
   const files = [...(prompt?.files ?? [])];
   const touched = files.filter(([, touches]) => operationCount(touches) > 0).length;
   const changed = files.filter(([, touches]) => operationCount(touches, "changes") > 0).length;
@@ -34,10 +34,10 @@ export function FileInspector({ prompt, index, total, selectedFile, following, s
   return (
     <aside className="activity-inspector" data-mobile-open={mobileOpen || undefined} aria-label="Selected prompt and file">
       <div className="inspector-heading">
-        <span className="activity-eyebrow">{prompt ? `Prompt ${promptNumber(index)}` : "Prompt details"}</span>
-        <div className="inspector-navigation"><span>{following ? "Following" : "Pinned"}</span>
+        <span className="activity-eyebrow">{overview ? "Session overview" : `Prompt ${promptNumber(index)}`}</span>
+        <div className="inspector-navigation"><span>{overview ? `${total} prompts` : "Filtered"}</span>
           <button type="button" className="activity-icon-button" aria-label="Previous prompt" disabled={index <= 0} onClick={() => onNavigate(index - 1)}><Icon name="left" className="size-3.5" /></button>
-          <button type="button" className="activity-icon-button" aria-label="Next prompt" disabled={index < 0 || index >= total - 1} onClick={() => onNavigate(index + 1)}><Icon name="right" className="size-3.5" /></button>
+          <button type="button" className="activity-icon-button" aria-label="Next prompt" disabled={!total || index >= total - 1} onClick={() => onNavigate(index + 1)}><Icon name="right" className="size-3.5" /></button>
           <button type="button" className="activity-icon-button inspector-close" aria-label="Close detail panel" ref={closeRef} onClick={onClose}><Icon name="close" className="size-3.5" /></button>
         </div>
       </div>
@@ -50,18 +50,18 @@ export function FileInspector({ prompt, index, total, selectedFile, following, s
         </div>
         <div className="inspector-files">
           {selectedFile ? <>
-            <div className="inspector-section-heading"><h3 className="activity-eyebrow">Focused file</h3><button type="button" className="activity-icon-button" aria-label="Show all files for this prompt" onClick={(event) => onSelectFile(null, event.currentTarget)}><Icon name="close" className="size-3" /></button></div>
+            <div className="inspector-section-heading"><h3 className="activity-eyebrow">Focused file</h3><button type="button" className="activity-icon-button" aria-label={overview ? "Show all files for this session" : "Show all files for this prompt"} onClick={(event) => onSelectFile(null, event.currentTarget)}><Icon name="close" className="size-3" /></button></div>
             <h4 className="inspector-filename font-mono">{fileName(selectedFile)}</h4><p className="inspector-path font-mono">{folderName(selectedFile)}/</p>
             <FileBadges touches={touches} />
             <ul className="file-operations" aria-label="Recorded file operations">{touches.slice(0, 6).map((touch, position) => <li key={`${touch.callID}/${touch.action}`} data-outcome={touch.outcome} data-reverted={touch.reverted || undefined} title={`Call ${touch.callID}`}>
               <Icon name={touch.action === "read" ? "read" : "edit"} className="size-3.5 text-muted" /><span>{actionLabel(touch)}</span><small className="font-mono">{promptNumber(position)}</small><Icon name={touch.reverted ? "undo" : touch.outcome === "pending" ? "clock" : touch.outcome === "failed" ? "close" : "check"} className="operation-status size-3" />
             </li>)}</ul>
-            {!touches.length && <p className="inspector-note">No recorded activity for this file in this prompt.</p>}
+            {!touches.length && <p className="inspector-note">No recorded activity for this file in this {overview ? "session" : "prompt"}.</p>}
             {touches.length > 6 && <p className="inspector-note">+ {touches.length - 6} more operations in the related events</p>}
             {touches.some((touch) => touch.reverted) && <p className="inspector-note">Reverted edits stay in the activity history and are excluded from confirmed changes.</p>}
           </> : <>
-            <div className="inspector-section-heading"><h3 className="activity-eyebrow">Files in this prompt</h3><span className="font-mono">{files.length}</span></div>
-            {!files.length && <p className="inspector-note">No explicit file activity recorded for this prompt yet.</p>}
+            <div className="inspector-section-heading"><h3 className="activity-eyebrow">{overview ? "Files across all prompts" : "Files in this prompt"}</h3><span className="font-mono">{files.length}</span></div>
+            {!files.length && <p className="inspector-note">No explicit file activity recorded for this {overview ? "session" : "prompt"} yet.</p>}
             <ul className="prompt-files" aria-label="Touched files">{files.sort(([a], [b]) => a.localeCompare(b)).map(([path, entries]) => <li key={path}>
               <button type="button" className="prompt-file" title={path} onClick={(event) => onSelectFile(path, event.currentTarget)}><span className="prompt-file-name"><span className="truncate font-mono">{fileName(path)}</span><small>{operationCount(entries)} ops</small></span><FileBadges touches={entries} /></button>
             </li>)}</ul>
