@@ -294,9 +294,11 @@ an explicit directory listing are excluded from the file count.
 Expand **Event stream** beneath the heatmap for the full event feed, or choose
 **Inspect related events** in the inspector to show events associated with the
 selected prompt or file. **Show all events** clears that scope. Search event
-content or commands and filter by event type to narrow the feed further. Expand
-**Raw event** to inspect the original JSON, or use **Collapse all** to compact
-visible events. Search, filters, and expanded raw details survive live updates.
+content or commands and filter by event type to narrow the feed further. Event
+content starts collapsed; use **Expand all** to show visible event content or
+**Collapse all** to compact it again. New events inherit the current collapse
+state. Expand **Raw event** to inspect the original JSON. Search, filters, and
+expanded raw details survive live updates.
 
 The bottom timeline follows the filtered event stream. Select an event to open
 the stream and pause playback at that point, or use the prompt-navigation

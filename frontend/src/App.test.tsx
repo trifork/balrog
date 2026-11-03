@@ -130,6 +130,7 @@ test("collapse all changes only visible content-bearing events and leaves raw de
   const user = userEvent.setup();
   render(<App />);
   await openEvents(user);
+  await user.click(screen.getByRole("button", { name: "Expand all" }));
   await user.click(screen.getByRole("tab", { name: /First session/ }));
   await user.click(screen.getByRole("button", { name: "Collapse all" }));
   expect(screen.getAllByRole("button", { name: "Expand event" })).toHaveLength(2);
@@ -162,6 +163,7 @@ test("keeps raw details open across filtering and lets new events inherit the co
   const user = userEvent.setup();
   const { rerender } = render(<App />);
   await openEvents(user);
+  await user.click(screen.getByRole("button", { name: "Expand all" }));
   const details = cards()[0].querySelector("details")!;
   await user.click(within(cards()[0]).getByText("Raw event"));
   await user.selectOptions(screen.getByRole("combobox", { name: "Filter event type" }), "tool");
@@ -180,7 +182,7 @@ test("shows initial empty state and disables collapse when no event has content"
   render(<App />);
   expect(screen.getByRole("heading", { name: "Ready when you are" })).toBeTruthy();
   await openEvents(user);
-  expect((screen.getByRole("button", { name: "Collapse all" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Expand all" }) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.change(screen.getByRole("searchbox", { name: "Search events" }), { target: { value: "missing" } });
   expect(screen.getByText("No matching events")).toBeTruthy();
 });

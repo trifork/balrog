@@ -18,7 +18,7 @@ interface Props {
 export function EventFeed({ events, selectedSession, sessionTitle, eventIDs, activeEventID, cutoffEventID, onVisibleEventsChange, jumpRequest }: Props) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
-  const [collapse, setCollapse] = useState({ defaultValue: false, overrides: new Map<number, boolean>() });
+  const [collapse, setCollapse] = useState({ defaultValue: true, overrides: new Map<number, boolean>() });
   const query = search.trim().toLowerCase();
   const matching = useMemo(() => events.filter((message) => {
     const tag = String(message.event.tag ?? "event");
@@ -36,7 +36,7 @@ export function EventFeed({ events, selectedSession, sessionTitle, eventIDs, act
 
   const isCollapsed = (id: number) => collapse.overrides.get(id) ?? collapse.defaultValue;
   const contentEvents = visible.filter((message) => typeof message.content === "string");
-  const allCollapsed = contentEvents.length > 0 && contentEvents.every((message) => isCollapsed(message.id));
+  const allCollapsed = contentEvents.length > 0 ? contentEvents.every((message) => isCollapsed(message.id)) : collapse.defaultValue;
   const filtered = events.length > 0 || Boolean(selectedSession || query || filter !== "all");
   const visibleIDs = new Set(visible.map((message) => message.id));
 
