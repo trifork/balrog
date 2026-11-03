@@ -654,8 +654,19 @@ Every record includes `tag`, `sessionID`, `pluginID` (per plugin instance), and
 V1 hook records preserve `{ input, output }`. V2 records contain the native event
 directly under the tag; the analyzer also accepts older `{ event }` wrappers.
 They are not payload-compatible with V1. V2 captures prompts at durable inbox
-admission, not through the pre-admission prompt hook. The event subscription is
-aborted when the plugin unloads.
+admission, not through the pre-admission prompt hook.
+
+V2 shares one server-wide event subscription across loaded Balrog locations and
+plugin module evaluations. Events with a location are recorded by that location's
+plugin instance, using its `logEndpoint`, `logPath`, and `pluginID`. Events without
+a location are recorded once by the instance that owns the subscription. Each
+location still has its own initialization record, tool instrumentation, and
+permission connection. Unloading the subscription owner transfers recording to a
+remaining location; unloading the last location aborts the subscription and
+releases the shared state. Each location has an ordered write queue, so a slow
+write does not block event intake or other locations. Unloading flushes that
+location's pending writes and reports its write failures without stopping the
+other locations' recording.
 
 ## Development
 

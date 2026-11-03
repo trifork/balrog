@@ -4,6 +4,7 @@ import { SensitiveReadPermissions } from "./permissions.js";
 import { instrumentTools } from "./instrumentation.js";
 import { registerOutcomeReporting } from "./outcomes.js";
 import { registerRetro } from "./retro.js";
+import { registerEvents } from "./events.js";
 
 export default Plugin.define({
   id: "opencode-balrog",
@@ -20,37 +21,29 @@ export default Plugin.define({
     });
 
     const permissions = new SensitiveReadPermissions(ctx, recorder.pluginID, ctx.options.logEndpoint ?? "http://localhost:5001/log");
-    await permissions.start();
-
-    if (ctx.options.outcomesAndRetro ?? true) {
-      const outcomes = await registerOutcomeReporting(ctx, recorder);
-      await instrumentTools(ctx, recorder, outcomes);
-      await registerRetro(ctx);
-    }
-
-    const controller = new AbortController();
-    const consume = (async () => {
-      try {
-        for await (const event of ctx.event.subscribe({
-          signal: controller.signal,
-        })) {
-          permissions.observe(event);
-          const sessionID =
-            "sessionID" in event.data &&
-            typeof event.data.sessionID === "string"
-              ? event.data.sessionID
-              : null;
-          await recorder.record(event.type, sessionID, event);
-        }
-      } catch (error) {
-        if (!controller.signal.aborted) throw error;
+    try {
+      await permissions.start();
+      if (ctx.options.outcomesAndRetro ?? true) {
+        const outcomes = await registerOutcomeReporting(ctx, recorder);
+        await instrumentTools(ctx, recorder, outcomes);
+        await registerRetro(ctx);
       }
-    })();
+      const stopRecording = registerEvents({
+        context: ctx,
+        recorder,
+        observe: (event) => permissions.observe(event),
+      });
 
-    return async () => {
-      controller.abort();
+      return async () => {
+        try {
+          await stopRecording();
+        } finally {
+          await permissions.close();
+        }
+      };
+    } catch (error) {
       await permissions.close();
-      await consume;
-    };
+      throw error;
+    }
   },
 });
