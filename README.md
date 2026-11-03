@@ -9,6 +9,7 @@ plugin/
   shared/recorder.ts   HTTP transport and file fallback
   v1/index.ts          OpenCode V1 hooks
   v2/index.ts          OpenCode V2 hooks
+  v2/tui.ts            OpenCode V2 sidebar session link
 server/record.ts      Log recorder for both versions
 server/view.ts        Live viewer HTTP and WebSocket server
 frontend/            React viewer built with Vite
@@ -137,6 +138,36 @@ To specify explicitly the endpoint to forward log entries to you can specify the
 ```
 
 The API versions and tracing differences are the same on Windows and Linux.
+
+### OpenCode V2 sidebar link
+
+The V2 directory also includes a TUI entrypoint that adds a **Balrog** section
+to OpenCode's session sidebar. Its link opens the frontend with the current
+session selected, for example `http://localhost:5002/?session=ses_123`. It stays
+available between prompts and updates when you switch sessions. OpenCode
+discovers this entrypoint automatically when the V2 plugin directory is configured;
+reload the plugin after updating Balrog.
+
+Run `npm run view` separately so the frontend is available and receives the
+session's events. To use a different frontend address, add `viewerURL` alongside
+the V2 plugin's other options:
+
+```jsonc
+{
+  "package": "/home/user/code/balrog/plugin/v2",
+  "options": {
+    "logEndpoint": "http://localhost:5001/log",
+    "viewerURL": "http://localhost:8080/"
+  }
+}
+```
+
+`viewerURL` must be an absolute HTTP or HTTPS URL reachable from your browser.
+It is independent of `logEndpoint` and defaults to `http://localhost:5002/`.
+For frontend development, use `http://localhost:5173/`. Opening the link directly
+from the terminal requires terminal hyperlink support; otherwise copy the
+displayed URL into your browser. The sidebar integration is V2-only; the V1
+plugin continues recording events without adding sidebar content.
 
 ## Record events
 

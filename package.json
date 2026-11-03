@@ -21,8 +21,10 @@
     "@opencode-ai/sdk": "^1.19.0",
     "@opencode/plugin": "2.2.0",
     "@opencode/protocol": "2.2.0",
+    "@opentui/solid": "0.7.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
+    "solid-js": "1.9.12",
     "ws": "^8.22.1"
   },
   "devDependencies": {

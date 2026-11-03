@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { test, type TestContext } from "node:test";
 import type { Hooks, PluginInput } from "@opencode-ai/plugin";
 import type { Plugin } from "@opencode/plugin";
+import { Host } from "@opencode/plugin/host";
 import { BalrogPlugin as legacyPlugin } from "../plugin/opencode-balrog.js";
 import { Recorder } from "../plugin/shared/recorder.js";
 import v1 from "../plugin/v1/index.js";
@@ -29,6 +31,14 @@ function captureLogs(t: TestContext) {
   });
   return records;
 }
+
+test("V2 directory discovers both recorder and sidebar entrypoints", () => {
+  const directory = fileURLToPath(new URL("../plugin/v2/", import.meta.url));
+  const entrypoints = Host.resolve({ directory });
+
+  assert.equal(entrypoints.server, new URL("../plugin/v2/index.ts", import.meta.url).href);
+  assert.equal(entrypoints.tui, new URL("../plugin/v2/tui.ts", import.meta.url).href);
+});
 
 test("recorder posts the envelope and keeps a stable per-instance ID", async (t) => {
   const records = captureLogs(t);
