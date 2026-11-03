@@ -1,17 +1,18 @@
 @import "tailwindcss" source(".");
+@import "./file-activity.css";
 
 @theme {
   --spacing: 4px;
-  --font-sans: "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, monospace;
   --font-code: ui-monospace, "Cascadia Code", Consolas, monospace;
-  --color-canvas: #111214;
-  --color-panel: #18191c;
-  --color-frame: #151618;
-  --color-line: #2a2b30;
-  --color-muted: #96969f;
-  --color-ink: #ededf0;
-  --color-accent: #ff9a66;
+  --color-canvas: #111213;
+  --color-panel: #171819;
+  --color-frame: #151617;
+  --color-line: #2b2c2e;
+  --color-muted: #9c9b97;
+  --color-ink: #e9e7e3;
+  --color-accent: #ffac78;
 }
 
 @layer base {

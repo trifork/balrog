@@ -8,9 +8,10 @@ interface Props {
   events: ReceivedEvent[];
   selectedSession: string;
   sessionTitle?: string;
+  eventIDs?: ReadonlySet<number>;
 }
 
-export function EventFeed({ events, selectedSession, sessionTitle }: Props) {
+export function EventFeed({ events, selectedSession, sessionTitle, eventIDs }: Props) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("all");
   const [collapse, setCollapse] = useState({ defaultValue: false, overrides: new Map<number, boolean>() });
@@ -21,11 +22,12 @@ export function EventFeed({ events, selectedSession, sessionTitle }: Props) {
     const isTool = /tool/i.test(tag);
     const sessionID = message.session?.sessionID || message.event.sessionID || "";
     return (!selectedSession || sessionID === selectedSession)
+      && (!eventIDs || eventIDs.has(message.id))
       && (!query || JSON.stringify(message.event).toLowerCase().includes(query))
       && (filter === "all" || (filter === "tool" ? isTool
         : filter === "other" ? !isTool && (kind === "other" || kind === "success")
         : filter === kind));
-  }).reverse(), [events, selectedSession, query, filter]);
+  }).reverse(), [events, selectedSession, query, filter, eventIDs]);
 
   const isCollapsed = (id: number) => collapse.overrides.get(id) ?? collapse.defaultValue;
   const contentEvents = visible.filter((message) => typeof message.content === "string");
@@ -70,7 +72,7 @@ export function EventFeed({ events, selectedSession, sessionTitle }: Props) {
         </select>
         <button id="collapse-all" className="h-10 bg-panel px-[13px] text-[11px] whitespace-nowrap" type="button" disabled={!contentEvents.length} onClick={collapseAll}>{allCollapsed ? "Expand all" : "Collapse all"}</button>
       </div>
-      <div id="events" className="relative" role="tabpanel" aria-label="Session events">
+      <div id="events" className="relative" role="region" aria-label="Session events">
         {!visible.length && <div id="empty" className="flex min-h-[290px] flex-col items-center justify-center rounded-[10px] border border-dashed border-[#35363c] bg-[radial-gradient(ellipse_at_50%_10%,#ff9a6605,transparent_70%)] px-5 py-10 text-center">
           <div className="mb-4.5 grid size-[50px] place-items-center rounded-[14px] border border-[#ff9a6626] bg-[#ff9a6609] text-accent"><Icon name="activity" className="size-6" /></div>
           <h3 className="mb-1.5 text-[15px] font-[550]">{filtered ? "No matching events" : "Ready when you are"}</h3>

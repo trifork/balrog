@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Balrog · File activity — design preview</title>
+  <style>
+    :root {
+      --canvas: #111213;
+      --surface: #171819;
+      --raised: #1d1e20;
+      --line: #2b2c2e;
+      --ink: #e9e7e3;
+      --muted: #9c9b97;
+      --quiet: #73746f;
+      --accent: #ffac78;
+      --accent-dim: #ffac7810;
+      --green: #9abea4;
+      --red: #df8c80;
+      --heat-0: #202123;
+      --heat-1: #453127;
+      --heat-2: #7d4930;
+      --heat-3: #bd7143;
+      --heat-4: #f4ae75;
+      --label-width: 220px;
+      --cell-width: 32px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background: var(--canvas);
+      font-synthesis: none;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-size: 13px; -webkit-font-smoothing: antialiased; }
+    button, input, select { font: inherit; }
+    button, select { cursor: pointer; }
+    button { color: inherit; }
+    button:disabled { opacity: .35; cursor: default; }
+    button, input, select { -webkit-tap-highlight-color: transparent; }
+    button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
+      outline: 2px solid var(--accent); outline-offset: 3px;
+    }
+    button { transition: background .15s, color .15s, border-color .15s; }
+    svg { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+    [hidden] { display: none !important; }
+    ::selection { background: #ffac7833; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-thumb { background: #3c3b39; border-radius: 6px; }
+    ::-webkit-scrollbar-corner { background: var(--surface); }
+    .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    .eyebrow { font-size: 10px; font-weight: 600; letter-spacing: 1.4px; text-transform: uppercase; }
+    .muted { color: var(--muted); }
+    .icon-button { display: inline-grid; place-items: center; padding: 0; width: 28px; height: 28px; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--muted); }
+    .icon-button:hover:not(:disabled) { color: var(--ink); background: #ffffff08; border-color: var(--line); }
+    .app { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: 60px minmax(0, 1fr) 30px; height: 100dvh; min-height: 640px; }
+    .app-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 24px; padding: 0 28px; border-bottom: 1px solid var(--line); }
+    .brand { display: flex; align-items: center; gap: 9px; font-size: 23px; font-weight: 720; letter-spacing: -1.1px; }
+    .brand svg { width: 24px; height: 27px; color: var(--accent); }
+    .brand-dot { color: var(--accent); }
+    .session-tabs { display: flex; align-self: stretch; align-items: stretch; gap: 4px; min-width: 0; overflow-x: auto; scrollbar-width: thin; }
+    .session-tab { display: flex; align-items: center; flex-shrink: 0; max-width: 240px; padding: 0 12px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 12px; text-align: left; }
+    .session-tab span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .session-tab:hover { border-bottom-color: #45464d; background: #ffffff03; color: var(--ink); }
+    .session-tab[aria-selected="true"] { border-bottom-color: var(--accent); background: var(--accent-dim); color: #ffb58c; }
+    .session-tab:focus-visible { outline-offset: -5px; }
+    .header-right { margin-left: auto; display: flex; align-items: center; gap: 18px; }
+    .preview-badge { border: 1px solid #8e765138; border-radius: 4px; background: #9e763809; padding: 5px 7px; color: #b7a283; font-size: 9px; letter-spacing: 1.1px; text-transform: uppercase; }
+    .sample-label { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--muted); }
+    .sample-label::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
+    .workspace { min-width: 0; min-height: 0; padding: 25px 28px 16px; display: flex; flex-direction: column; }
+    .page-heading { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; margin-bottom: 24px; }
+    h1 { font-size: clamp(24px, 2.2vw, 31px); font-weight: 560; line-height: 1.2; letter-spacing: -1.1px; margin: 0 0 8px; }
+    .subtitle { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.6; }
+    .headline-stats { display: flex; gap: 26px; padding-bottom: 3px; flex-shrink: 0; }
+    .headline-stat { padding-left: 22px; border-left: 1px solid var(--line); }
+    .headline-stat strong { display: block; font-size: 24px; font-weight: 450; letter-spacing: -.8px; font-variant-numeric: tabular-nums; }
+    .headline-stat span { display: block; color: var(--muted); font-size: 10px; margin-top: 5px; }
+    .toolbar { display: flex; align-items: center; gap: 12px; padding-bottom: 17px; }
+    .search { display: flex; align-items: center; gap: 8px; height: 33px; width: 220px; padding: 0 10px; border: 1px solid var(--line); background: var(--surface); border-radius: 6px; color: var(--quiet); }
+    .search input { width: 100%; min-width: 0; background: transparent; color: var(--ink); border: 0; outline: 0; font-size: 11px; }
+    .search:focus-within { border-color: #b37f5d; }
+    .search input::placeholder { color: var(--quiet); }
+    .segmented { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 6px; }
+    .segmented button { border: 0; border-radius: 3px; padding: 5px 11px; background: transparent; color: var(--muted); font-size: 11px; white-space: nowrap; }
+    .segmented button:hover { color: var(--ink); }
+    .segmented button[aria-pressed="true"] { background: #30302d; color: #efe7db; box-shadow: 0 1px 3px #0003; }
+    .toolbar-end { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+    .text-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--line); border-radius: 5px; background: transparent; padding: 8px 10px; font-size: 11px; white-space: nowrap; color: var(--muted); }
+    .text-button:hover { background: #ffffff05; color: var(--ink); border-color: #44413b; }
+    .text-button svg { width: 13px; height: 13px; }
+    .text-button[aria-pressed="true"] { color: var(--accent); border-color: #ffac7830; background: var(--accent-dim); }
+    .workspace-body { display: grid; grid-template-columns: minmax(0, 1fr) 294px; gap: 16px; flex: 1; min-width: 0; min-height: 0; }
+    .map-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); overflow: hidden; }
+    .map-topline { min-height: 45px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 17px; border-bottom: 1px solid var(--line); }
+    .map-topline .eyebrow { color: #c3beb4; }
+    .map-topline .map-subtitle { margin-left: 10px; font-size: 10px; color: var(--quiet); }
+    .map-topline-right { display: flex; align-items: center; gap: 10px; font-size: 10px; color: var(--muted); white-space: nowrap; }
+    .map-topline-right svg { width: 12px; height: 12px; }
+    .map-topline-right span { display: flex; align-items: center; gap: 5px; }
+    .matrix-scroll { overflow: auto; flex: 1; min-width: 0; min-height: 0; padding: 0 14px 12px 0; position: relative; scrollbar-gutter: stable; }
+    .matrix { border-collapse: separate; border-spacing: 0; table-layout: fixed; width: 100%; min-width: calc(var(--label-width) + var(--prompt-count) * var(--cell-width)); }
+    .matrix col.file-col { width: var(--label-width); }
+    .matrix th, .matrix td { padding: 0; font-weight: 400; }
+    .matrix thead th { position: sticky; top: 0; z-index: 3; background: var(--surface); height: 98px; vertical-align: bottom; border-bottom: 1px solid #ffffff05; }
+    .matrix thead .corner { z-index: 5; left: 0; text-align: left; vertical-align: middle; padding: 18px 17px 0; }
+    .corner-top { display: flex; align-items: center; gap: 7px; font-size: 10px; color: var(--muted); }
+    .corner-top svg { width: 12px; height: 12px; }
+    .corner-bottom { display: block; margin-top: 25px; color: var(--quiet); font-size: 9px; letter-spacing: 1px; text-transform: uppercase; }
+    .prompt-head { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; height: 93px; padding: 8px 0; background: transparent; border: 0; border-radius: 4px 4px 0 0; color: var(--quiet); }
+    .prompt-head:hover, .prompt-head.column-hover { background: #ffffff05; color: var(--ink); }
+    .prompt-head.selected { background: #ffac780b; color: var(--accent); }
+    .prompt-total { font-size: 9px; font-variant-numeric: tabular-nums; }
+    .bar-track { height: 35px; width: 13px; display: flex; align-items: flex-end; }
+    .bar { width: 100%; min-height: 2px; background: #5b4535; border-radius: 2px 2px 0 0; }
+    .selected .bar { background: var(--accent); }
+    .prompt-number { font-size: 10px; }
+    .group-row th { height: 34px; background: var(--surface); text-align: left; }
+    .folder-toggle { position: sticky; left: 0; display: flex; align-items: center; gap: 7px; width: var(--label-width); padding: 9px 16px 6px; border: 0; background: var(--surface); text-align: left; font-size: 11px; color: #bab8b1; }
+    .folder-toggle:hover { color: var(--ink); }
+    .folder-toggle svg { width: 12px; height: 12px; color: var(--quiet); }
+    .folder-toggle .chevron { width: 10px; transition: transform .15s; }
+    .folder-toggle[aria-expanded="false"] .chevron { transform: rotate(-90deg); }
+    .folder-count { margin-left: 2px; color: #73736c; font-size: 9px; }
+    .file-row { height: 31px; }
+    .file-label { position: sticky; left: 0; z-index: 2; background: var(--surface); }
+    .file-label button { width: 100%; height: 31px; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 35px; background: transparent; border: 0; text-align: left; color: #b3b2ac; font-size: 10px; }
+    .file-label button:hover, .file-row:hover .file-label button { color: var(--ink); }
+    .file-type { font: 600 8px/1 monospace; letter-spacing: -.5px; color: #7e968c; flex-shrink: 0; }
+    .file-type.css { color: #9f8cbb; }
+    .file-type.json { color: #b5a47a; }
+    .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-row.selected-row .file-label { background: #211e1a; }
+    .file-row.selected-row .file-label button { color: var(--accent); }
+    .matrix td { padding: 3px; }
+    .matrix td.selected-column { background: #ffac7807; }
+    .cell { width: 100%; height: 25px; display: block; position: relative; border: 1px solid #ffffff03; border-radius: 3px; padding: 0; background: var(--heat-0); font: 10px/1 "SFMono-Regular", Consolas, monospace; color: transparent; }
+    .cell[data-heat="1"] { background: var(--heat-1); }
+    .cell[data-heat="2"] { background: var(--heat-2); }
+    .cell[data-heat="3"] { background: var(--heat-3); }
+    .cell[data-heat="4"] { background: var(--heat-4); }
+    .cell:hover, .cell:focus-visible { color: var(--ink); border-color: #ffe2c9b3; outline: 1px solid #ffe2c966; outline-offset: 1px; z-index: 1; }
+    .cell[data-heat="4"]:hover, .cell[data-heat="4"]:focus-visible { color: #442715; }
+    .cell.selected-cell { outline: 2px solid #ffe3c9; outline-offset: 2px; z-index: 1; color: #fff3e7; box-shadow: 0 0 15px #f4ae7517; }
+    .cell[data-heat="4"].selected-cell { color: #442715; }
+    .cell.reverted::after { content: ""; position: absolute; right: 2px; bottom: 2px; width: 5px; height: 5px; border-right: 1px solid #ffe0baaa; border-bottom: 1px solid #ffe0baaa; }
+    .cell.failed::before { content: ""; position: absolute; top: 2px; right: 2px; width: 4px; height: 4px; background: var(--red); border-radius: 50%; box-shadow: 0 0 0 1px #171819; }
+    .cell.pending { border: 1px dashed #b6a58e; }
+    .map-legend { padding: 12px 16px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; color: var(--muted); font-size: 9px; }
+    .heat-key { display: flex; align-items: center; gap: 7px; }
+    .heat-key > span:first-child { margin-right: 4px; }
+    .key-item { display: flex; align-items: center; gap: 4px; }
+    .swatch { display: inline-block; height: 11px; width: 11px; border-radius: 2px; border: 1px solid #ffffff07; }
+    .legend-note { display: flex; gap: 11px; color: var(--quiet); }
+    .legend-note span { display: flex; align-items: center; gap: 4px; }
+    .reverted-key { width: 7px; height: 7px; border-right: 1px solid #c3ae93; border-bottom: 1px solid #c3ae93; }
+    .failed-key { width: 4px; height: 4px; border-radius: 50%; background: var(--red); }
+    .pending-key { width: 9px; height: 9px; border: 1px dashed #b6a58e; border-radius: 2px; }
+    .empty { color: var(--muted); margin: 70px 20px; text-align: center; line-height: 1.8; }
+    .inspector { display: flex; flex-direction: column; overflow: hidden; min-height: 0; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
+    .inspector-top { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; padding: 10px 16px; min-height: 45px; border-bottom: 1px solid var(--line); }
+    .inspector-top .eyebrow { color: var(--accent); }
+    .inspector-navigation { display: flex; align-items: center; gap: 1px; }
+    .pin-label { color: var(--quiet); font-size: 9px; margin-right: 7px; }
+    .prompt-detail { padding: 19px 18px 18px; flex-shrink: 0; }
+    .prompt-meta { display: flex; align-items: center; gap: 6px; color: var(--quiet); font-size: 9px; margin-bottom: 12px; }
+    .prompt-meta svg { height: 11px; width: 11px; }
+    .prompt-text { font-size: 17px; line-height: 1.55; font-weight: 480; letter-spacing: -.35px; margin: 0 0 18px; }
+    .prompt-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .prompt-stat strong { font-size: 23px; font-weight: 450; display: block; font-variant-numeric: tabular-nums; }
+    .prompt-stat span { font-size: 10px; color: var(--muted); display: block; margin-top: 4px; }
+    .file-detail { border-top: 1px solid var(--line); padding: 17px 18px; flex: 1; min-height: 0; overflow: auto; }
+    .section-label { display: flex; justify-content: space-between; align-items: center; color: var(--quiet); margin-bottom: 14px; }
+    .section-label .icon-button { width: 18px; height: 18px; }
+    .section-label .icon-button svg { width: 12px; height: 12px; }
+    .detail-filename { font-size: 12px; font-weight: 500; margin: 0; overflow-wrap: anywhere; }
+    .detail-path { margin: 6px 0 15px; color: var(--quiet); font-size: 10px; overflow-wrap: anywhere; }
+    .badges { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 18px; }
+    .badge { display: inline-block; border-radius: 3px; font-size: 9px; padding: 4px 6px; background: #95bbef0d; color: #a4bbcf; }
+    .badge.edits { background: #ffac7810; color: #d6a57b; }
+    .badge.reverted { background: #ffffff06; color: var(--muted); }
+    .badge.failed { background: #df8c800d; color: var(--red); }
+    .operation-list { display: flex; flex-direction: column; }
+    .operation { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-top: 1px solid #ffffff05; }
+    .operation-icon { color: var(--quiet); width: 13px; height: 13px; }
+    .operation-name { font-size: 10px; color: #c1beb7; }
+    .operation-index { color: var(--quiet); font-size: 9px; margin-left: auto; }
+    .operation-status { display: inline-flex; width: 13px; color: var(--green); }
+    .operation-status svg { height: 11px; width: 11px; }
+    .operation.is-reverted .operation-name { color: #9c968b; }
+    .operation.is-reverted .operation-status { color: var(--muted); }
+    .operation.is-failed .operation-status { color: var(--red); }
+    .operation.is-pending .operation-status { color: #d2b579; }
+    .file-detail-note { color: var(--quiet); font-size: 10px; line-height: 1.65; margin: 12px 0 0; }
+    .prompt-file { width: 100%; display: flex; align-items: center; gap: 9px; text-align: left; background: transparent; border: 0; border-top: 1px solid #ffffff06; padding: 11px 0; color: #c1beb7; font-size: 10px; }
+    .prompt-file .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .prompt-file:hover { color: var(--accent); }
+    .prompt-file small { color: var(--quiet); margin-left: auto; white-space: nowrap; }
+    .inspector-footer { flex-shrink: 0; padding: 15px 18px; border-top: 1px solid var(--line); }
+    .inspect-events { display: flex; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent; color: var(--accent); font-size: 11px; }
+    .inspect-events svg { width: 13px; height: 13px; }
+    .inspect-events svg:last-child { margin-left: auto; }
+    .inspector-footer p { margin: 10px 0 0; color: var(--quiet); font-size: 9px; line-height: 1.6; }
+    .trace { margin-top: 12px; flex-shrink: 0; border: 1px solid var(--line); border-radius: 7px; background: #151617; overflow: hidden; }
+    .trace summary { display: flex; align-items: center; gap: 9px; padding: 11px 15px; list-style: none; cursor: pointer; color: var(--muted); font-size: 11px; }
+    .trace summary::-webkit-details-marker { display: none; }
+    .trace summary > svg { width: 13px; height: 13px; }
+    .trace[open] summary > svg:first-child { transform: rotate(90deg); }
+    .trace-scope { font-size: 9px; color: var(--quiet); margin-left: 7px; }
+    .trace-count { color: #c5baa9; background: #ffffff06; border: 1px solid #ffffff07; font-size: 9px; padding: 2px 5px; border-radius: 3px; }
+    .trace-right { margin-left: auto; color: var(--quiet); font-size: 10px; }
+    .trace-events { max-height: 155px; overflow: auto; padding: 0 15px 10px; }
+    .trace-event { display: grid; grid-template-columns: 22px 115px minmax(100px, 1fr) 110px; gap: 12px; align-items: center; padding: 9px 0; font-size: 10px; border-top: 1px solid var(--line); }
+    .trace-event .event-path { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; color: var(--muted); }
+    .trace-event .event-result { text-align: right; color: var(--green); }
+    .trace-event .event-result.reverted { color: var(--muted); }
+    .trace-event .event-result.failed { color: var(--red); }
+    .trace-event .event-result.pending { color: #d2b579; }
+    .app-footer { display: flex; align-items: center; gap: 7px; padding: 0 28px; border-top: 1px solid var(--line); font-size: 9px; color: var(--quiet); }
+    .app-footer svg { width: 11px; height: 11px; }
+    .footer-right { margin-left: auto; }
+    .tooltip { position: fixed; z-index: 20; pointer-events: none; width: 260px; padding: 12px 14px; background: #252523; border: 1px solid #51483d; border-radius: 7px; box-shadow: 0 12px 40px #0006; }
+    .tooltip strong { display: block; font-size: 11px; font-weight: 500; margin: 0 0 7px; overflow-wrap: anywhere; }
+    .tooltip p { font-size: 10px; color: #aaa59d; margin: 0 0 9px; line-height: 1.5; }
+    .tooltip .tooltip-stats { color: var(--accent); margin: 0; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+    @media (min-width: 1600px) { :root { --label-width: 250px; } .workspace-body { grid-template-columns: minmax(0, 1fr) 320px; } .workspace { padding-right: 36px; padding-left: 36px; } .file-label button { font-size: 11px; } }
+    @media (max-width: 1180px) { .workspace-body { grid-template-columns: minmax(0, 1fr) 265px; gap: 12px; } .workspace { padding: 20px 20px 12px; } .headline-stats { gap: 16px; } .headline-stat { padding-left: 16px; } .headline-stat:last-child { display: none; } .map-subtitle { display: none; } .legend-note { gap: 7px; } }
+    @media (max-width: 860px) {
+      :root { --label-width: 195px; }
+      .app { height: auto; min-height: 100dvh; grid-template-rows: 102px minmax(0, 1fr) 32px; }
+      .app-header { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 56px 46px; padding: 0 18px; gap: 0 18px; }
+      .header-right { grid-column: 2; grid-row: 1; }
+      .session-tabs { grid-column: 1 / -1; grid-row: 2; }
+      .session-tab { max-width: 230px; padding: 0 10px; font-size: 11px; }
+      .page-heading { margin-bottom: 18px; } .headline-stats { display: none; }
+      .toolbar { flex-wrap: wrap; gap: 10px; }
+      .toolbar-end { margin-left: 0; } .search { flex: 1; min-width: 170px; }
+      .workspace-body { display: flex; flex-direction: column; }
+      .map-panel { height: 580px; flex-shrink: 0; }
+      .inspector { max-height: 55dvh; position: fixed; z-index: 10; bottom: 14px; right: 14px; left: 14px; box-shadow: 0 -12px 80px #0009; display: none; }
+      .inspector.mobile-open { display: flex; }
+      .mobile-close { display: inline-grid !important; }
+      .prompt-detail { padding: 16px 18px; } .prompt-text { font-size: 16px; margin-bottom: 12px; }
+      .prompt-stats { display: flex; gap: 30px; } .prompt-stat strong { display: inline; font-size: 18px; margin-right: 5px; } .prompt-stat span { display: inline; }
+      .trace-right { display: none; } .app-footer { padding: 0 20px; } .footer-right { display: none; }
+    }
+    @media (max-width: 480px) {
+      .workspace { padding: 18px 12px 12px; } .app-header { padding: 0 14px; }
+      .header-right { gap: 10px; } .sample-label { font-size: 10px; } .preview-badge { font-size: 8px; }
+      .brand { font-size: 21px; } .brand svg { width: 20px; }
+      h1 { font-size: 25px; } .subtitle { max-width: 295px; font-size: 11px; }
+      .search { flex: 1 1 100%; } .segmented { flex: 1; } .segmented button { flex: 1; padding-left: 7px; padding-right: 7px; }
+      .text-button { padding: 8px; }
+      .map-topline { padding: 0 12px; } .map-topline-right { font-size: 9px; }
+      .map-legend { padding: 10px 12px; gap: 9px; } .heat-key { gap: 6px; }
+      .trace-scope { display: none; } .trace-event { grid-template-columns: 16px 85px minmax(60px, 1fr); gap: 7px; } .trace-event .event-result { grid-column: 2 / -1; text-align: left; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; } }
+  </style>
+</head>
+<body>
+  <svg aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden">
+    <defs>
+      <symbol id="i-flame" viewBox="0 0 24 28"><path d="M13 2c1 7 8 8 8 15a9 9 0 0 1-18 0c0-4 2-7 5-10-1 5 1 6 2 7 3-3 4-6 3-12Z"/><path d="M13 16c0 3 3 4 3 6a4 4 0 0 1-8 0c0-2 2-3 2-5 0 2 1 3 2 3 1-1 1-2 1-4Z" fill="currentColor" stroke="none"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7V5h6l2 3h10v12H3Z"/></symbol>
+      <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="i-right" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+      <symbol id="i-left" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></symbol>
+      <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M4 12h16m-6-6 6 6-6 6"/></symbol>
+      <symbol id="i-follow" viewBox="0 0 24 24"><path d="m4 5 9 7-9 7ZM19 5v14"/></symbol>
+      <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+      <symbol id="i-read" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></symbol>
+      <symbol id="i-edit" viewBox="0 0 24 24"><path d="m15 4 5 5M4 20l5-1L21 7a2 2 0 0 0-5-5L4 14Z"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+      <symbol id="i-undo" viewBox="0 0 24 24"><path d="M5 10h10a6 6 0 0 1 0 12M5 10l5-5M5 10l5 5"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M6 18 18 6"/></symbol>
+      <symbol id="i-event" viewBox="0 0 24 24"><path d="m4 6 5 6-5 6M13 18h7"/></symbol>
+      <symbol id="i-branch" viewBox="0 0 24 24"><circle cx="6" cy="5" r="2"/><circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M6 7v10M18 7c0 7-12 3-12 10"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="app">
+    <header class="app-header">
+      <div class="brand"><svg aria-hidden="true"><use href="#i-flame"/></svg><span>balrog<span class="brand-dot">.</span></span></div>
+      <nav class="session-tabs" id="session-tabs" role="tablist" aria-label="Sessions" aria-orientation="horizontal">
+        <button type="button" class="session-tab" id="session-all" role="tab" data-session="all" aria-selected="false" aria-controls="activity-workspace" tabindex="-1" title="All sessions"><span>All sessions</span></button>
+        <button type="button" class="session-tab" id="session-tracking" role="tab" data-session="tracking" aria-selected="true" aria-controls="activity-workspace" tabindex="0" title="File activity &amp; undo tracking"><span>File activity &amp; undo tracking</span></button>
+        <button type="button" class="session-tab" id="session-viewer" role="tab" data-session="viewer" aria-selected="false" aria-controls="activity-workspace" tabindex="-1" title="Viewer layout polish"><span>Viewer layout polish</span></button>
+      </nav>
+      <div class="header-right"><span class="preview-badge">Design preview</span><span class="sample-label">Sample data</span></div>
+    </header>
+
+    <main class="workspace" id="activity-workspace" aria-labelledby="session-tracking">
+      <div class="page-heading">
+        <div>
+          <h1>Files touched per prompt</h1>
+          <p class="subtitle">Follow the work through your codebase. One prompt at a time.</p>
+        </div>
+        <div class="headline-stats" aria-label="Session totals">
+          <div class="headline-stat"><strong id="stat-files">18</strong><span>observed files</span></div>
+          <div class="headline-stat"><strong id="stat-prompts">24</strong><span>prompts</span></div>
+          <div class="headline-stat"><strong id="stat-operations">—</strong><span>successful operations</span></div>
+        </div>
+      </div>
+
+      <div class="toolbar">
+        <label class="search"><svg aria-hidden="true"><use href="#i-search"/></svg><input id="file-search" type="search" placeholder="Find a file or folder…" aria-label="Find a file or folder" autocomplete="off"></label>
+        <div class="segmented" role="group" aria-label="Activity type"><button type="button" data-mode="all" aria-pressed="true">All activity</button><button type="button" data-mode="reads" aria-pressed="false">Reads</button><button type="button" data-mode="changes" aria-pressed="false">Changes</button></div>
+        <div class="toolbar-end">
+          <button type="button" class="text-button" id="follow-toggle" aria-pressed="false"><svg aria-hidden="true"><use href="#i-follow"/></svg><span>Follow latest</span></button>
+        </div>
+      </div>
+
+      <div class="workspace-body">
+        <section class="map-panel" aria-label="File activity heatmap">
+          <div class="map-topline"><div><span class="eyebrow">Activity map</span><span class="map-subtitle" id="map-size"></span></div><div class="map-topline-right"><span>Earlier <svg aria-hidden="true"><use href="#i-arrow"/></svg> Latest</span></div></div>
+          <div class="matrix-scroll" id="matrix-scroll"><table class="matrix" id="matrix" aria-label="Successful file operations by prompt"></table><p id="empty-state" class="empty" hidden>No matching files.<br><span class="muted">Try a filename, extension, or folder.</span></p></div>
+          <div class="map-legend">
+            <div class="heat-key" aria-label="Heat scale: no operations, 1, 2 to 3, 4 to 7, 8 or more"><span id="legend-title">Operations</span><span class="key-item"><i class="swatch" style="background:var(--heat-0)"></i>0</span><span class="key-item"><i class="swatch" style="background:var(--heat-1)"></i>1</span><span class="key-item"><i class="swatch" style="background:var(--heat-2)"></i>2–3</span><span class="key-item"><i class="swatch" style="background:var(--heat-3)"></i>4–7</span><span class="key-item"><i class="swatch" style="background:var(--heat-4)"></i>8+</span></div>
+            <div class="legend-note"><span><i class="reverted-key"></i>Reverted</span><span><i class="failed-key"></i>Failed</span><span><i class="pending-key"></i>Pending</span></div>
+          </div>
+        </section>
+
+        <aside class="inspector" id="inspector" aria-label="Selected prompt and file">
+          <div class="inspector-top"><span class="eyebrow" id="inspector-prompt"></span><div class="inspector-navigation"><span class="pin-label" id="pin-label">Pinned</span><button type="button" class="icon-button" id="previous-prompt" aria-label="Previous prompt"><svg aria-hidden="true"><use href="#i-left"/></svg></button><button type="button" class="icon-button" id="next-prompt" aria-label="Next prompt"><svg aria-hidden="true"><use href="#i-right"/></svg></button><button type="button" class="icon-button mobile-close" id="close-inspector" style="display:none" aria-label="Close detail panel"><svg aria-hidden="true"><use href="#i-close"/></svg></button></div></div>
+          <div class="prompt-detail" id="prompt-detail"></div>
+          <div class="file-detail" id="file-detail"></div>
+          <div class="inspector-footer"><button type="button" class="inspect-events" id="inspect-events"><svg aria-hidden="true"><use href="#i-event"/></svg><span id="inspect-label">Inspect related events</span><svg aria-hidden="true"><use href="#i-arrow"/></svg></button><p>Explicit file-tool activity. Shell commands and unobserved files aren’t included.</p></div>
+        </aside>
+      </div>
+
+      <details class="trace" id="trace"><summary><svg aria-hidden="true"><use href="#i-right"/></svg><span>Event stream</span><span class="trace-count" id="trace-count"></span><span class="trace-scope" id="trace-scope"></span><span class="trace-right">The details, when you need them.</span></summary><div class="trace-events" id="trace-events"></div></details>
+    </main>
+    <footer class="app-footer"><svg aria-hidden="true"><use href="#i-branch"/></svg><span>balrog / main</span><span style="margin:0 6px;color:#44453f">·</span><span>Interactive concept · sample data</span><span class="footer-right">Select a cell to inspect · Arrow keys move between cells</span></footer>
+  </div>
+  <div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+  <div id="announcement" class="sr-only" role="status" aria-live="polite"></div>
+
+  <script>
+    // Self-contained design fixture. No network requests or live session connection.
+    const $ = (selector) => document.querySelector(selector);
+    const $$ = (selector) => [...document.querySelectorAll(selector)];
+    const icon = (name, className = '') => `<svg class="${className}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+    const escapeHTML = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]);
+    const pad = (number) => String(number).padStart(2, '0');
+
+    const promptTexts = [
+      'Explore the project and explain the event pipeline',
+      'Record explicit file reads and edits from tool calls',
+      'Group file activity by the prompt that triggered it',
+      'Normalize file paths relative to the workspace',
+      'Add file activity to the viewer protocol',
+      'Build a file tree for the selected prompt',
+      'Style the read, edit, and added-file badges',
+      'Connect the file tree to the live event stream',
+      'Add a prompt selector and follow-latest mode',
+      'Make the right pane collapsible',
+      'Handle pending and failed tool calls',
+      'Add tests for multi-file patch activity',
+      'Capture native undo and redo events',
+      'Keep prompt history when switching sessions',
+      'Detect edits that reverse an earlier change',
+      'Handle inverse patches across multiple tool calls',
+      'Test undo, redo, and partial reversions',
+      'Track reverted edits without losing the original file activity',
+      'Show reverted actions in the file tree',
+      'Refine badge colors and long file paths',
+      'Exclude directory listings from file counts',
+      'Check the behavior across both plugin versions',
+      'Polish the event feed and connection status',
+      'Verify the full file activity flow',
+    ];
+    // Rows are curated to show exploration, focused implementation, and testing clusters.
+    const definitions = [
+      ['server/file-activity.ts',       [2,6,8,4,3,1,0,2,1,0,6,4,5,2,9,8,4,9,2,0,5,3,0,2]],
+      ['server/view.ts',                [2,2,3,0,5,0,0,4,1,0,2,0,3,2,0,1,0,2,0,0,1,2,1,1]],
+      ['server/log-receiver.ts',        [3,2,1,0,2,0,0,1,0,0,1,0,2,0,1,0,0,1,0,0,0,2,0,1]],
+      ['server/record.ts',              [1,2,0,0,0,0,0,0,0,0,1,0,2,0,0,0,0,0,0,0,0,2,0,1]],
+      ['frontend/src/FileActivity.tsx', [0,0,1,0,1,8,5,6,7,2,3,0,1,4,1,0,2,5,8,6,2,0,1,3]],
+      ['frontend/src/App.tsx',          [1,0,0,0,0,3,1,2,3,7,0,0,0,4,0,0,0,0,1,2,0,0,5,1]],
+      ['frontend/src/styles.css',       [0,0,0,0,0,2,7,1,2,4,0,0,0,0,0,0,0,0,4,8,0,0,5,1]],
+      ['frontend/src/useViewer.ts',     [1,0,1,0,3,2,0,7,4,1,2,0,0,6,0,0,0,2,0,0,0,1,3,1]],
+      ['frontend/src/EventFeed.tsx',    [1,0,0,0,0,1,1,2,0,1,0,0,0,1,0,0,0,0,0,2,0,0,8,2]],
+      ['frontend/src/SessionTabs.tsx',  [0,0,0,0,0,0,0,1,2,1,0,0,0,5,0,0,0,0,0,2,0,0,3,1]],
+      ['shared/viewer-protocol.ts',     [2,2,3,1,8,2,0,4,0,0,3,1,4,1,2,2,1,4,1,0,0,2,1,1]],
+      ['plugin/v1/index.ts',            [2,3,1,1,0,0,0,1,0,0,2,1,0,0,1,0,0,0,0,0,1,6,0,2]],
+      ['plugin/v2/index.ts',            [2,4,3,1,1,0,0,2,0,0,3,2,7,0,2,1,2,3,0,0,2,7,0,2]],
+      ['plugin/shared/recorder.ts',     [3,2,1,0,0,0,0,1,0,0,2,0,3,0,0,0,0,0,0,0,0,4,0,1]],
+      ['tests/file-activity.test.ts',   [0,2,4,3,1,0,0,0,0,0,5,9,4,0,7,6,9,6,2,0,5,4,0,5]],
+      ['tests/viewer.test.ts',          [0,0,0,0,2,0,0,3,2,0,2,1,0,3,0,0,2,0,0,0,0,1,3,4]],
+      ['tests/recorder.test.ts',        [0,1,0,0,0,0,0,0,0,0,2,0,2,0,0,0,0,0,0,0,0,3,0,2]],
+      ['tests/plugin-v2.test.ts',       [0,1,2,0,1,0,0,1,0,0,2,3,5,0,3,2,5,2,0,0,2,6,0,4]],
+    ];
+    const allFiles = definitions.map(([path, counts], row) => ({
+      path, name: path.split('/').at(-1), folder: path.slice(0, path.lastIndexOf('/')),
+      activity: counts.map((count, column) => {
+        const reads = column === 0 ? count : count ? Math.min(count, 1 + ((row + column) % 3)) : 0;
+        const edits = count - reads;
+        return { reads, edits, reverted: edits > 1 && [15, 17].includes(column) && row % 4 === 0 ? 1 : 0, failed: row === 14 && column === 16 ? 1 : 0, pending: row === 0 && column === 23 ? 1 : 0 };
+      }),
+    }));
+    allFiles[0].activity[17] = { reads: 3, edits: 6, reverted: 2, failed: 0, pending: 0 };
+    const viewerPromptIndices = [0, 5, 6, 7, 8, 9, 13, 18, 19, 22, 23];
+    const sessions = {
+      tracking: { prompts: promptTexts, files: allFiles },
+      viewer: {
+        prompts: viewerPromptIndices.map((index) => promptTexts[index]),
+        files: allFiles.filter((file) => file.path.startsWith('frontend/') || ['shared/viewer-protocol.ts', 'server/view.ts', 'tests/viewer.test.ts'].includes(file.path))
+          .map((file) => ({ ...file, activity: viewerPromptIndices.map((index) => file.activity[index]) })),
+      },
+    };
+    sessions.all = {
+      prompts: [...sessions.tracking.prompts, ...sessions.viewer.prompts],
+      files: allFiles.map((file) => ({
+        ...file,
+        activity: [...file.activity, ...(sessions.viewer.files.find((item) => item.path === file.path)?.activity
+          ?? sessions.viewer.prompts.map(() => ({ reads: 0, edits: 0, reverted: 0, failed: 0, pending: 0 })))],
+      })),
+    };
+    const state = { session: 'tracking', prompt: 17, file: 'server/file-activity.ts', mode: 'all', search: '', following: false, collapsed: new Set() };
+    const session = () => sessions[state.session];
+    const metric = (activity) => state.mode === 'reads' ? activity.reads : state.mode === 'changes' ? activity.edits - activity.reverted : activity.reads + activity.edits;
+    const heat = (count) => count === 0 ? 0 : count === 1 ? 1 : count <= 3 ? 2 : count <= 7 ? 3 : 4;
+    const metricName = () => state.mode === 'reads' ? 'successful reads' : state.mode === 'changes' ? 'unreverted changes' : 'successful operations';
+    const hasActivity = (activity) => activity.reads + activity.edits + activity.failed + activity.pending > 0;
+    const visibleFiles = () => session().files.filter((file) => file.path.toLowerCase().includes(state.search.toLowerCase()));
+    const numberedPrompt = () => `Prompt ${pad(state.prompt + 1)}`;
+    const promptSource = (column) => state.session === 'all'
+      ? column < sessions.tracking.prompts.length ? 'File activity & undo tracking' : 'Viewer layout polish'
+      : 'Sample user prompt';
+
+    function operationsFor(file) {
+      const activity = file.activity[state.prompt];
+      const operations = [];
+      for (let index = 0; index < activity.reads; index++) operations.push({ type: 'read', label: 'Read file', status: 'success', file });
+      for (let index = 0; index < activity.edits; index++) operations.push({ type: 'edit', label: index < activity.reverted ? 'Edit · reverted' : 'Edit file', status: index < activity.reverted ? 'reverted' : 'success', file });
+      if (activity.failed) operations.push({ type: 'edit', label: 'Edit · failed', status: 'failed', file });
+      if (activity.pending) operations.push({ type: 'read', label: 'Read · pending', status: 'pending', file });
+      return operations;
+    }
+    function selectedOperations() {
+      return session().files.filter((file) => !state.file || file.path === state.file).flatMap(operationsFor);
+    }
+    function renderMatrix() {
+      const files = visibleFiles();
+      const prompts = session().prompts;
+      const scroll = $('#matrix-scroll');
+      const position = { left: scroll.scrollLeft, top: scroll.scrollTop };
+      const totals = prompts.map((_, column) => files.filter((file) => metric(file.activity[column]) > 0).length);
+      const maximum = Math.max(1, ...totals);
+      const groups = [...new Set(files.map((file) => file.folder))];
+      const focusFile = files.find((file) => file.path === state.file && !state.collapsed.has(file.folder)) || files.find((file) => !state.collapsed.has(file.folder));
+      $('#matrix').style.setProperty('--prompt-count', prompts.length);
+      $('#matrix').innerHTML = `<caption class="sr-only">Rows are observed files. Columns are prompts in chronological order. Cell intensity represents ${metricName()}. Column totals count distinct matching files.</caption>
+        <colgroup><col class="file-col">${prompts.map(() => '<col>').join('')}</colgroup>
+        <thead><tr><th class="corner" scope="col"><span class="corner-top">Files per prompt ${icon('arrow')}</span><span class="corner-bottom">Observed files</span></th>${prompts.map((text, column) => `<th scope="col"><button type="button" class="prompt-head ${column === state.prompt ? 'selected' : ''}" data-prompt="${column}" aria-pressed="${column === state.prompt}" title="Prompt ${pad(column + 1)}: ${escapeHTML(text)} · ${totals[column]} files · ${escapeHTML(promptSource(column))}"><span class="prompt-total">${totals[column]}</span><span class="bar-track"><span class="bar" style="height:${Math.max(3, totals[column] / maximum * 100)}%"></span></span><span class="prompt-number mono">${pad(column + 1)}</span></button></th>`).join('')}</tr></thead>
+        <tbody>${groups.map((folder) => {
+          const groupFiles = files.filter((file) => file.folder === folder);
+          const collapsed = state.collapsed.has(folder);
+          return `<tr class="group-row"><th colspan="${prompts.length + 1}" scope="rowgroup"><button type="button" class="folder-toggle" data-folder="${escapeHTML(folder)}" aria-expanded="${!collapsed}">${icon('down', 'chevron')}${icon('folder')}<span>${escapeHTML(folder)}/</span><span class="folder-count">${groupFiles.length}</span></button></th></tr>${collapsed ? '' : groupFiles.map((file) => `<tr class="file-row ${file.path === state.file ? 'selected-row' : ''}"><th class="file-label" scope="row"><button type="button" data-file="${escapeHTML(file.path)}" title="${escapeHTML(file.path)}"><span class="file-type ${file.name.endsWith('.css') ? 'css' : ''}">${file.name.endsWith('.css') ? '#' : 'TS'}</span><span class="file-name mono">${escapeHTML(file.name)}</span></button></th>${file.activity.map((activity, column) => {
+            const count = metric(activity);
+            const selected = column === state.prompt && file.path === state.file;
+            return `<td class="${column === state.prompt ? 'selected-column' : ''}"><button type="button" class="cell ${selected ? 'selected-cell' : ''} ${activity.reverted && state.mode !== 'reads' ? 'reverted' : ''} ${activity.failed && state.mode !== 'reads' ? 'failed' : ''} ${activity.pending && state.mode !== 'changes' ? 'pending' : ''}" data-path="${escapeHTML(file.path)}" data-column="${column}" data-heat="${heat(count)}" tabindex="${file === focusFile && column === state.prompt ? 0 : -1}" aria-label="${escapeHTML(file.path)}, prompt ${column + 1}: ${count} ${metricName()}${activity.reverted ? `, ${activity.reverted} reverted edits` : ''}${activity.failed ? ', 1 failed attempt' : ''}${activity.pending ? ', 1 pending read' : ''}" aria-pressed="${selected}">${count || ''}</button></td>`;
+          }).join('')}</tr>`).join('')}`;
+        }).join('')}</tbody>`;
+      $('#matrix').hidden = files.length === 0;
+      $('#empty-state').hidden = files.length !== 0;
+      $('#map-size').textContent = `${files.length} files × ${prompts.length} prompts`;
+      $('#legend-title').textContent = state.mode === 'reads' ? 'Reads' : state.mode === 'changes' ? 'Changes' : 'Operations';
+      scroll.scrollLeft = position.left;
+      scroll.scrollTop = position.top;
+    }
+
+    function renderInspector() {
+      const { prompts, files } = session();
+      const promptFiles = files.filter((file) => hasActivity(file.activity[state.prompt]));
+      const touched = promptFiles.filter((file) => file.activity[state.prompt].reads + file.activity[state.prompt].edits > 0).length;
+      const changed = promptFiles.filter((file) => file.activity[state.prompt].edits - file.activity[state.prompt].reverted > 0).length;
+      const file = files.find((item) => item.path === state.file);
+      $('#inspector-prompt').textContent = numberedPrompt();
+      $('#pin-label').textContent = state.following ? 'Following' : 'Pinned';
+      $('#previous-prompt').disabled = state.prompt === 0;
+      $('#next-prompt').disabled = state.prompt === prompts.length - 1;
+      $('#prompt-detail').innerHTML = `<div class="prompt-meta">${icon('clock')}<span class="mono">14:${pad(12 + state.prompt)}:${pad((state.prompt * 7) % 60)}</span><span>·</span><span>${escapeHTML(promptSource(state.prompt))}</span></div><h2 class="prompt-text">${escapeHTML(prompts[state.prompt])}</h2><div class="prompt-stats"><div class="prompt-stat"><strong>${touched}</strong><span>files touched</span></div><div class="prompt-stat"><strong>${changed}</strong><span>confirmed changed</span></div></div>`;
+      if (file) {
+        const activity = file.activity[state.prompt];
+        const operations = operationsFor(file);
+        $('#file-detail').innerHTML = `<div class="section-label"><span class="eyebrow">Focused file</span><button type="button" class="icon-button" id="clear-file" aria-label="Show all files for this prompt">${icon('close')}</button></div><h3 class="detail-filename mono">${escapeHTML(file.name)}</h3><p class="detail-path mono">${escapeHTML(file.folder)}/</p><div class="badges"><span class="badge">${activity.reads} ${activity.reads === 1 ? 'read' : 'reads'}</span><span class="badge edits">${activity.edits} ${activity.edits === 1 ? 'edit' : 'edits'}</span>${activity.reverted ? `<span class="badge reverted">${activity.reverted} reverted</span>` : ''}${activity.failed ? '<span class="badge failed">1 failed</span>' : ''}${activity.pending ? '<span class="badge reverted">1 pending</span>' : ''}</div><div class="operation-list">${operations.slice(0, 6).map((operation, index) => `<div class="operation is-${operation.status}">${icon(operation.type, 'operation-icon')}<span class="operation-name">${operation.label}</span><span class="operation-index mono">${pad(index + 1)}</span><span class="operation-status" title="${operation.status}">${icon(operation.status === 'reverted' ? 'undo' : operation.status === 'failed' ? 'close' : operation.status === 'pending' ? 'clock' : 'check')}<span class="sr-only">${operation.status}</span></span></div>`).join('')}</div>${operations.length > 6 ? `<p class="file-detail-note">+ ${operations.length - 6} more in the event stream</p>` : ''}${!operations.length ? '<p class="file-detail-note">No recorded activity for this file in this prompt.</p>' : ''}${activity.reverted ? '<p class="file-detail-note">Reverted edits stay in the activity history and are excluded from confirmed changes.</p>' : ''}`;
+      } else {
+        $('#file-detail').innerHTML = `<div class="section-label"><span class="eyebrow">Files in this prompt</span><span class="mono">${promptFiles.length}</span></div>${promptFiles.map((item) => `<button type="button" class="prompt-file" data-inspect-file="${escapeHTML(item.path)}" title="${escapeHTML(item.path)}">${icon('read')}<span class="mono">${escapeHTML(item.name)}</span><small>${item.activity[state.prompt].reads + item.activity[state.prompt].edits} ops</small></button>`).join('')}`;
+      }
+      renderTrace();
+    }
+
+    function renderTrace() {
+      const operations = selectedOperations();
+      $('#trace-count').textContent = operations.length;
+      $('#trace-scope').textContent = `${numberedPrompt()}${state.file ? ` / ${state.file.split('/').at(-1)}` : ' / all files'}`;
+      $('#inspect-label').textContent = `Inspect ${operations.length} related events`;
+      $('#trace-events').innerHTML = operations.length ? operations.map((operation, index) => `<div class="trace-event"><span class="mono muted">${pad(index + 1)}</span><span class="mono">tool.${operation.type}</span><span class="event-path mono">${escapeHTML(operation.file.path)}</span><span class="event-result ${operation.status}">${operation.status === 'reverted' ? 'success · reverted' : operation.status}</span></div>`).join('') : '<p class="muted">No recorded events for this selection.</p>';
+    }
+
+    function render() {
+      const { files, prompts } = session();
+      $$('.session-tab').forEach((tab) => {
+        const selected = tab.dataset.session === state.session;
+        tab.setAttribute('aria-selected', String(selected));
+        tab.tabIndex = selected ? 0 : -1;
+      });
+      $('#activity-workspace').setAttribute('aria-labelledby', `session-${state.session}`);
+      $('#stat-files').textContent = files.length;
+      $('#stat-prompts').textContent = prompts.length;
+      $('#stat-operations').textContent = files.reduce((total, file) => total + file.activity.reduce((sum, activity) => sum + activity.reads + activity.edits, 0), 0);
+      $$('.segmented button').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.mode === state.mode)));
+      $('#follow-toggle').setAttribute('aria-pressed', String(state.following));
+      $('#follow-toggle span').textContent = state.following ? 'Following latest' : 'Follow latest';
+      renderMatrix();
+      renderInspector();
+    }
+
+    function hideTooltip() {
+      $('#tooltip').hidden = true;
+      $$('.column-hover').forEach((element) => element.classList.remove('column-hover'));
+      $$('[aria-describedby="tooltip"]').forEach((element) => element.removeAttribute('aria-describedby'));
+    }
+
+    function select(prompt, path, openMobile = true) {
+      state.prompt = prompt;
+      state.file = path;
+      state.following = false;
+      hideTooltip();
+      render();
+      if (openMobile) $('#inspector').classList.add('mobile-open');
+      $('#announcement').textContent = `${numberedPrompt()} selected${path ? `, ${path}` : ''}.`;
+    }
+
+    function revealSelection() {
+      const button = $('.selected-cell') || $('.prompt-head.selected');
+      const scroll = $('#matrix-scroll');
+      if (!button) return;
+      const rect = button.getBoundingClientRect();
+      const viewport = scroll.getBoundingClientRect();
+      const labelWidth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--label-width'));
+      if (rect.right > viewport.right - 20) scroll.scrollLeft += rect.right - viewport.right + 30;
+      if (rect.left < viewport.left + labelWidth + 6) scroll.scrollLeft -= viewport.left + labelWidth + 12 - rect.left;
+    }
+
+    function showTooltip(button) {
+      hideTooltip();
+      const file = session().files.find((item) => item.path === button.dataset.path);
+      const column = Number(button.dataset.column);
+      const activity = file.activity[column];
+      const tooltip = $('#tooltip');
+      tooltip.innerHTML = `<strong class="mono">${escapeHTML(file.path)}</strong><p>Prompt ${pad(column + 1)} · ${escapeHTML(session().prompts[column])}</p><p class="tooltip-stats">${activity.reads} reads · ${activity.edits} edits${activity.reverted ? ` · ${activity.reverted} reverted` : ''}${activity.failed ? ' · 1 failed' : ''}${activity.pending ? ' · 1 pending' : ''}</p>`;
+      tooltip.hidden = false;
+      const rect = button.getBoundingClientRect();
+      const width = Math.min(260, window.innerWidth - 24);
+      tooltip.style.width = `${width}px`;
+      tooltip.style.left = `${Math.max(12, Math.min(rect.left + rect.width / 2 - width / 2, window.innerWidth - width - 12))}px`;
+      tooltip.style.top = `${Math.max(12, rect.top - tooltip.offsetHeight - 10 > 60 ? rect.top - tooltip.offsetHeight - 10 : Math.min(rect.bottom + 10, window.innerHeight - tooltip.offsetHeight - 12))}px`;
+      button.setAttribute('aria-describedby', 'tooltip');
+      $(`.prompt-head[data-prompt="${column}"]`)?.classList.add('column-hover');
+    }
+
+    $('#matrix').addEventListener('click', (event) => {
+      const cell = event.target.closest('.cell');
+      const prompt = event.target.closest('[data-prompt]');
+      const file = event.target.closest('[data-file]');
+      const folder = event.target.closest('[data-folder]');
+      if (cell) {
+        const column = Number(cell.dataset.column);
+        const path = cell.dataset.path;
+        select(column, path);
+        $$('.cell').find((button) => button.dataset.path === path && Number(button.dataset.column) === column)?.focus({ preventScroll: true });
+        hideTooltip();
+      } else if (prompt) select(Number(prompt.dataset.prompt), null);
+      else if (file) select(state.prompt, file.dataset.file);
+      else if (folder) {
+        const name = folder.dataset.folder;
+        state.collapsed.has(name) ? state.collapsed.delete(name) : state.collapsed.add(name);
+        renderMatrix();
+        $$('[data-folder]').find((button) => button.dataset.folder === name)?.focus({ preventScroll: true });
+      }
+    });
+    $('#matrix').addEventListener('pointerover', (event) => {
+      const cell = event.target.closest('.cell');
+      if (cell && event.pointerType !== 'touch') showTooltip(cell);
+    });
+    $('#matrix').addEventListener('pointerout', (event) => { if (event.target.closest('.cell')) hideTooltip(); });
+    $('#matrix').addEventListener('focusin', (event) => { if (event.target.matches('.cell')) showTooltip(event.target); });
+    $('#matrix').addEventListener('focusout', hideTooltip);
+    $('#matrix-scroll').addEventListener('scroll', hideTooltip, { passive: true });
+    $('#matrix').addEventListener('keydown', (event) => {
+      if (!event.target.matches('.cell') || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+      event.preventDefault();
+      const files = visibleFiles().filter((file) => !state.collapsed.has(file.folder));
+      const row = files.findIndex((file) => file.path === event.target.dataset.path);
+      const column = Number(event.target.dataset.column);
+      const nextRow = Math.max(0, Math.min(files.length - 1, row + (event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0)));
+      const nextColumn = Math.max(0, Math.min(session().prompts.length - 1, column + (event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0)));
+      const target = $$('.cell').find((button) => button.dataset.path === files[nextRow].path && Number(button.dataset.column) === nextColumn);
+      $$('.cell[tabindex="0"]').forEach((button) => button.tabIndex = -1);
+      target.tabIndex = 0;
+      target.focus({ preventScroll: true });
+      const scroll = $('#matrix-scroll');
+      const rect = target.getBoundingClientRect();
+      const bounds = scroll.getBoundingClientRect();
+      const labelWidth = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--label-width'));
+      if (rect.right > bounds.right - 16) scroll.scrollLeft += rect.right - bounds.right + 24;
+      if (rect.left < bounds.left + labelWidth) scroll.scrollLeft -= bounds.left + labelWidth - rect.left + 12;
+      if (rect.bottom > bounds.bottom - 12) scroll.scrollTop += rect.bottom - bounds.bottom + 20;
+      if (rect.top < bounds.top + 100) scroll.scrollTop -= bounds.top + 100 - rect.top + 12;
+    });
+    $('.segmented').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-mode]');
+      if (!button) return;
+      state.mode = button.dataset.mode;
+      hideTooltip();
+      render();
+      $('#announcement').textContent = `Showing ${metricName()}.`;
+    });
+    $('#file-search').addEventListener('input', (event) => {
+      state.search = event.target.value.trim();
+      hideTooltip();
+      renderMatrix();
+      $('#announcement').textContent = `${visibleFiles().length} matching files.`;
+    });
+    $('#follow-toggle').addEventListener('click', () => {
+      state.following = !state.following;
+      if (state.following) { state.prompt = session().prompts.length - 1; state.file = null; }
+      hideTooltip();
+      render();
+      revealSelection();
+      $('#announcement').textContent = state.following ? 'Following the latest sample prompt. This preview uses static sample data.' : 'Latest prompt pinned.';
+    });
+    $('#previous-prompt').addEventListener('click', () => { select(Math.max(0, state.prompt - 1), state.file); revealSelection(); });
+    $('#next-prompt').addEventListener('click', () => { select(Math.min(session().prompts.length - 1, state.prompt + 1), state.file); revealSelection(); });
+    $('#file-detail').addEventListener('click', (event) => {
+      if (event.target.closest('#clear-file')) select(state.prompt, null);
+      const file = event.target.closest('[data-inspect-file]');
+      if (file) { state.collapsed.delete(session().files.find((item) => item.path === file.dataset.inspectFile).folder); select(state.prompt, file.dataset.inspectFile); }
+    });
+    $('#inspect-events').addEventListener('click', () => {
+      $('#trace').open = true;
+      $('#inspector').classList.remove('mobile-open');
+      $('#trace summary').focus({ preventScroll: true });
+      $('#trace').scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'nearest' });
+    });
+    $('#close-inspector').addEventListener('click', () => { $('#inspector').classList.remove('mobile-open'); $('.selected-cell')?.focus({ preventScroll: true }); hideTooltip(); });
+    function revealSessionTab(tab) {
+      const tabs = $('#session-tabs');
+      const bounds = tabs.getBoundingClientRect();
+      const rect = tab.getBoundingClientRect();
+      if (rect.left < bounds.left) tabs.scrollLeft -= bounds.left - rect.left;
+      else if (rect.right > bounds.right) tabs.scrollLeft += rect.right - bounds.right;
+    }
+    function selectSession(id) {
+      if (id === state.session) return;
+      state.session = id;
+      state.prompt = state.session === 'viewer' ? 4 : 17;
+      state.file = state.session === 'viewer' ? 'frontend/src/FileActivity.tsx' : 'server/file-activity.ts';
+      state.search = '';
+      state.following = false;
+      state.collapsed.clear();
+      $('#file-search').value = '';
+      $('#matrix-scroll').scrollTop = 0;
+      $('#matrix-scroll').scrollLeft = 0;
+      hideTooltip();
+      render();
+      revealSelection();
+      revealSessionTab($(`#session-${id}`));
+      $('#announcement').textContent = `${$(`#session-${id}`).textContent} selected.`;
+    }
+    $('#session-tabs').addEventListener('click', (event) => {
+      const tab = event.target.closest('[data-session]');
+      if (tab) selectSession(tab.dataset.session);
+    });
+    $('#session-tabs').addEventListener('focusin', (event) => {
+      const tab = event.target.closest('[data-session]');
+      if (tab) revealSessionTab(tab);
+    });
+    $('#session-tabs').addEventListener('keydown', (event) => {
+      const tabs = $$('.session-tab');
+      const index = tabs.indexOf(document.activeElement);
+      if (index < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+        : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      selectSession(tabs[next].dataset.session);
+      tabs[next].focus({ preventScroll: true });
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { hideTooltip(); $('#inspector').classList.remove('mobile-open'); }
+    });
+    window.addEventListener('resize', hideTooltip);
+    render();
+    requestAnimationFrame(() => { revealSelection(); revealSessionTab($('.session-tab[aria-selected="true"]')); });
+  </script>
+</body>
+</html>

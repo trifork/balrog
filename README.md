@@ -212,19 +212,29 @@ SSE endpoint is no longer available. WebSocket requests do not control OpenCode.
 File-tree state is attached as `fileActivity`; when one event affects several
 prompts, additional prompt snapshots are included in `fileActivityUpdates`.
 
-The dashboard shows live event, session, and tool-call counts. Choose a session
-in the sidebar, search event content or commands, and filter by event type to
-narrow the feed. Expand **Raw event** to inspect the original JSON, or use
-**Collapse all** to compact the visible events. The layout also adapts to mobile.
+The dashboard centers **Files touched per prompt**: a live heatmap with observed
+files as rows and recorded prompts as columns. Choose a session using the header
+tabs, or use **All sessions** to see activity across sessions. Search full file
+paths, collapse folders, and switch between **All activity**, **Reads**, and
+**Changes**. Cell intensity counts successful file operations on a fixed scale
+(0, 1, 2–3, 4–7, 8+); column totals count distinct matching files. The session
+totals show observed files, prompts, and successful file operations.
 
-**Files touched per prompt** in the collapsible right pane shows a live file tree
-for the latest prompt in the selected session (or across all sessions). Choose an earlier prompt to pause
-following; **Follow latest** resumes it. File badges distinguish reads, edits,
-writes, additions, and deletions. Writes may create or overwrite a file. Pending
-and failed tool attempts stay visible but do not count as confirmed changes.
+Select a prompt heading or a cell to pin its details in the inspector;
+**Follow latest** resumes following incoming prompts. Late tool outcomes and
+undo/redo updates refresh their original columns without moving the selection.
+Arrow keys move between cells, and Enter or Space selects one. On mobile, the
+inspector opens as a dismissible bottom sheet.
+
+File badges distinguish reads, edits, writes, additions, and deletions. Writes
+may create or overwrite a file. Pending and failed attempts remain visible as
+cell markers and badges but contribute no heat or confirmed changes. The
+inspector's touched-file count includes files with successful operations;
+the observed-file total also includes files with pending or failed attempts.
 Undone changes include **(Reverted)** in their action badge, such as
 **Edit (Reverted)** or **Write (Reverted)**, instead of a separate badge.
-Reverted changes no longer count as confirmed changes; any still-active changes
+Reverted operations remain in **All activity** but are excluded from **Changes**
+and confirmed-change counts; any still-active changes
 to the same file retain their normal badges and continue to count. The viewer
 uses OpenCode V2's explicit `session.revert.staged`, `session.revert.cleared`,
 and `session.revert.committed` events to track undo, redo, and committed
@@ -238,9 +248,16 @@ changes reverted. Undo can update an earlier prompt without switching the select
 badge applies to recorded edits, not proof that the whole file matches its
 original contents. Restorations without the required recorded evidence are not
 detected; the viewer never checks the current filesystem to rewrite history.
-The tree contains observed files only, not a full workspace inventory.
+The heatmap contains observed files only, not a full workspace inventory.
 File tools accept `path`, `filePath`, and `file_path` arguments. Reads that return
 an explicit directory listing are excluded from the file count.
+
+Expand **Event stream** beneath the heatmap for the full event feed, or choose
+**Inspect related events** in the inspector to show events associated with the
+selected prompt or file. **Show all events** clears that scope. Search event
+content or commands and filter by event type to narrow the feed further. Expand
+**Raw event** to inspect the original JSON, or use **Collapse all** to compact
+visible events. Search, filters, and expanded raw details survive live updates.
 
 The viewer recognizes V1 prompt/tool hooks and V2 delivered user prompts and
 file-tool events, including multi-file `patch` and `apply_patch` calls. V2 also records
