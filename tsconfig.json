@@ -1,6 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2022",
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
@@ -9,8 +11,8 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "types": ["node"]
+    "types": ["node", "vite/client"]
   },
   "references": [],
-  "include": ["plugin/**/*.ts", "server/**/*.ts", "tests/**/*.ts"]
+  "include": ["plugin/**/*.ts", "server/**/*.ts", "tests/**/*.ts", "shared/**/*.ts", "frontend/**/*.ts", "frontend/**/*.tsx"]
 }

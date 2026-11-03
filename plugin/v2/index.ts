@@ -26,6 +26,7 @@ export default Plugin.define({
             "session.execution.failed",
             "session.execution.started",
             "session.execution.succeeded",
+            "session.inbox.delivered",
             "session.inbox.enqueued",
             "session.renamed",
             "session.text.ended",

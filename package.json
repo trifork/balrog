@@ -5,20 +5,40 @@
   "packageManager": "npm@10.0.0",
   "scripts": {
     "record": "tsx server/record.ts",
-    "view": "tsx server/view.ts",
-    "view-dev": "tsx watch server/view.ts",
+    "build": "vite build --config frontend/vite.config.ts",
+    "view": "npm run build && tsx server/view.ts",
+    "view-dev": "concurrently --kill-others --names server,frontend \"npm:dev:server\" \"npm:dev:frontend\"",
+    "dev:server": "tsx watch server/view.ts",
+    "dev:frontend": "vite --config frontend/vite.config.ts",
     "typecheck": "tsc --noEmit --incremental false",
-    "test": "tsx --test tests/*.test.ts"
+    "test": "npm run test:frontend && npm run test:server",
+    "pretest:server": "npm run build",
+    "test:server": "tsx --test tests/*.test.ts",
+    "test:frontend": "vitest run --config frontend/vite.config.ts"
   },
   "dependencies": {
     "@opencode-ai/plugin": "^1.19.0",
     "@opencode-ai/sdk": "^1.19.0",
     "@opencode/plugin": "2.2.0",
-    "@opencode/protocol": "2.2.0"
+    "@opencode/protocol": "2.2.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "ws": "^8.22.1"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.4",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
     "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/ws": "^8.18.2",
+    "concurrently": "^10.0.6",
+    "jsdom": "^29.1.1",
+    "tailwindcss": "^4.3.4",
     "tsx": "^4.23.15",
-    "typescript": "^7.0.2"
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.1.0"
   }
 }

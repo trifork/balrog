@@ -1,0 +1,67 @@
+@import "tailwindcss" source(".");
+
+@theme {
+  --spacing: 4px;
+  --font-sans: "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: ui-monospace, monospace;
+  --font-code: ui-monospace, "Cascadia Code", Consolas, monospace;
+  --color-canvas: #111214;
+  --color-panel: #18191c;
+  --color-frame: #151618;
+  --color-line: #2a2b30;
+  --color-muted: #96969f;
+  --color-ink: #ededf0;
+  --color-accent: #ff9a66;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  body {
+    @apply bg-canvas font-sans text-ink;
+  }
+
+  button, input, select {
+    font: inherit;
+  }
+
+  button {
+    @apply cursor-pointer rounded-[8px] border border-line bg-[#202125] text-[#d4d4da];
+  }
+
+  button, select {
+    @apply transition-colors duration-150;
+  }
+
+  button:hover {
+    @apply border-[#45464d] bg-[#2b2c31] text-white;
+  }
+
+  button:disabled {
+    @apply cursor-default opacity-40;
+  }
+
+  button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, a:focus-visible {
+    @apply outline-2 outline-solid outline-offset-4 outline-accent;
+  }
+
+  [hidden] {
+    display: none !important;
+  }
+
+  ::selection {
+    @apply bg-accent/20 text-white;
+  }
+
+  ::-webkit-scrollbar {
+    @apply size-1.5;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-[#393a42];
+  }
+}
