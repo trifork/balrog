@@ -294,7 +294,10 @@ an explicit directory listing are excluded from the file count.
 Expand **Event stream** beneath the heatmap for the full event feed, or choose
 **Inspect related events** in the inspector to show events associated with the
 selected prompt or file. **Show all events** clears that scope. Search event
-content or commands and filter by event type to narrow the feed further. Event
+content or commands and filter by event type to narrow the feed further.
+Opening the stream and following live events keep the search and filters in
+view above the newest events; explicit timeline jumps center the selected event.
+Event
 content starts collapsed; use **Expand all** to show visible event content or
 **Collapse all** to compact it again. New events inherit the current collapse
 state. Expand **Raw event** to inspect the original JSON. Search, filters, and

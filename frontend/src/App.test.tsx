@@ -126,6 +126,49 @@ test("session tabs support arrow keys, Home and End", async () => {
   expect(document.activeElement?.textContent).toContain("All sessions");
 });
 
+test("event stream keeps its controls at the top when opening and following live events", async () => {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    return new DOMRect(0, this.id.startsWith("event-") ? 400 : 20, 400, 100);
+  });
+  const user = userEvent.setup();
+  const { container, rerender } = render(<App />);
+  const scroller = container.querySelector<HTMLElement>(".activity-trace-scroll")!;
+  expect(scroller.scrollTop).toBe(0);
+  await user.click(screen.getByRole("button", { name: "Expand event stream" }));
+  expect(scroller.scrollTop).toBe(0);
+  expect(screen.getByRole("searchbox", { name: "Search events" })).toBeTruthy();
+  expect(screen.getByRole("combobox", { name: "Filter event type" })).toBeTruthy();
+  scroller.scrollTop = 200;
+  state = { ...state, events: [...state.events, message(5, "session.text.ended", "s1", "Newest")] };
+  rerender(<App />);
+  expect(scroller.scrollTop).toBe(0);
+  expect(cards()[0].id).toBe("event-5");
+});
+
+test("event stream resets to its controls when reopened after scrolling", async () => {
+  const user = userEvent.setup();
+  const { container } = render(<App />);
+  await user.click(screen.getByRole("button", { name: "Expand event stream" }));
+  const scroller = container.querySelector<HTMLElement>(".activity-trace-scroll")!;
+  scroller.scrollTop = 240;
+  await user.click(screen.getByRole("button", { name: "Collapse event stream" }));
+  await user.click(screen.getByRole("button", { name: "Expand event stream" }));
+  expect(scroller.scrollTop).toBe(0);
+});
+
+test("event stream still centers an explicitly selected timeline event", () => {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    return new DOMRect(0, this.id.startsWith("event-") ? 400 : 20, 400, this.classList.contains("activity-trace-scroll") ? 400 : 100);
+  });
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callback(0); return 1; });
+  vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  const { container } = render(<App />);
+  fireEvent.keyDown(screen.getByRole("slider", { name: "Scrub to event" }), { key: "Home" });
+  expect(screen.getByRole("button", { name: "Collapse event stream" })).toBeTruthy();
+  expect(cards()[0].id).toBe("event-1");
+  expect(container.querySelector<HTMLElement>(".activity-trace-scroll")!.scrollTop).toBe(230);
+});
+
 test("collapse all changes only visible content-bearing events and leaves raw details available", async () => {
   const user = userEvent.setup();
   render(<App />);

@@ -70,7 +70,11 @@ export function FileActivity({ events, sessions, selectedSession, activityPrompt
   }, [jumpRequest]);
 
   useLayoutEffect(() => {
-    if (!jumpRequest || !traceOpen) return;
+    if (!traceOpen) return;
+    if (!jumpRequest) {
+      if (traceScroll.current) traceScroll.current.scrollTop = 0;
+      return;
+    }
     const frame = requestAnimationFrame(() => {
       const card = document.getElementById(`event-${jumpRequest.id}`);
       const scroller = traceScroll.current;

@@ -34,7 +34,7 @@ export function App() {
     const latest = sessionEvents.at(-1);
     const card = latest ? document.getElementById(`event-${latest.id}`) : null;
     const scroller = card?.closest<HTMLElement>(".activity-trace-scroll");
-    if (card && !card.hidden && scroller) scroller.scrollTop += card.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    if (card && !card.hidden && scroller) scroller.scrollTop = 0;
   }, [followingLive, sessionEvents]);
 
   const resumeLive = useCallback(() => {
