@@ -568,12 +568,33 @@ examples, feature-local documentation, generated navigation aids, and justified
 file or module restructuring. The review considers dependent calls together and
 does not treat an honest intermediate finding as a failed investigation. It
 assesses the completed trace without requiring the original agent to supply
-reasons or outcomes. Assessments are report-only; source records are unchanged.
+reasons or outcomes. The skill publishes calculated values in one batch so the
+timeline can display them. Original tool calls and results remain unchanged.
 
-This is a read-only retrospective. It proposes changes and validation steps;
+The retrospective proposes repository changes and validation steps;
 applying them requires separate approval. Balrog must be reachable at
 `http://localhost:5001` unless the user supplies another endpoint. If the session
 is missing, the skill reports that instead of choosing another session.
+
+Assessments use `POST /api/sessions/<encoded-session-id>/assessments` with
+`Content-Type: application/json`:
+
+```json
+{
+  "assessments": [
+    { "callID": "original-call-id", "reason": "Inferred: find setup instructions.", "outcome": "Setup instructions found." }
+  ]
+}
+```
+
+The response is `{ "sessionID": "ses_example", "updated": 1 }`. Each entry must
+name an existing call in that session and have non-empty reason and outcome
+strings. Invalid or duplicate entries reject the batch before any writes.
+Requests are limited to 1 MiB and the viewer's loopback host rules; browser
+requests must use the same origin. Balrog stores separate `balrog.tool.assessed`
+events through its existing SQLite recording path and broadcasts live timeline
+updates. Later assessments replace displayed values for the same calls.
+The report states whether publication succeeded. Recommendation text is not stored.
 
 The source is `skills/retro/SKILL.md`; its portable Node helper is
 `skills/retro/scripts/fetch-session.mjs`. Reload the plugin after updating the
@@ -590,7 +611,7 @@ the working session. The sensitive-file permission integration is unchanged.
 
 Reload the plugin and restart the viewer after updating. Existing saved intent
 and outcome events remain readable for historical compatibility. New assessments
-happen only when `/retro` is requested; there is no assessment write endpoint.
+happen only when `/retro` is requested, through the assessment endpoint above.
 
 ### Persist recordings
 

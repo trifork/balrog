@@ -8,6 +8,7 @@
 - Assessment coverage: {{calls with evidence-supported reason and outcome assessments}} / {{included calls; distinguish unknowns and pending calls}}
 - Reporting helpers excluded: {{count}}
 - Review-time calls excluded: {{yes, no, or unknown; explain snapshot limits without showing the cutoff unless requested}}
+- Assessment publication: {{published call count, skipped because no calls remain, or failure and reason}}
 - Evidence limits: {{missing context, unknown timestamps, current-revision inspections, or redactions; use none when applicable}}
 
 ## Commands

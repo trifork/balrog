@@ -137,6 +137,13 @@ export class SessionAnalyzer {
       const outcome = nonEmptyString(data?.["outcome"]);
       if (outcome) this.ensureExecution(sessionID, callID).outcome = outcome;
     }
+    if (tag === "balrog.tool.assessed" && callID) {
+      const execution = this.executions.get(sessionID)?.get(callID);
+      if (execution) {
+        execution.reason = nonEmptyString(data?.["reason"]) ?? execution.reason;
+        execution.outcome = nonEmptyString(data?.["outcome"]) ?? execution.outcome;
+      }
+    }
     if (tag === "balrog.tool.intent" && callID) {
       const execution = this.ensureExecution(sessionID, callID);
       execution.reason = nonEmptyString(data?.["reason"]) ?? execution.reason;

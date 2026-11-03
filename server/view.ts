@@ -21,10 +21,10 @@ const permissions = new PermissionBroker();
 const server = createServer();
 const receiver = new LogReceiver(permissions, server);
 const analyzer = new SessionAnalyzer();
-const viewer = new LogViewer(analyzer, permissions, server);
 const store = values.db
   ? new SQLiteEventStore(path.resolve(values.db))
   : undefined;
+const viewer = new LogViewer(analyzer, permissions, server, (event) => store?.append(event));
 
 if (store) {
   for (const event of store.readAll()) {

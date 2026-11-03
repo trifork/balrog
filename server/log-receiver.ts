@@ -69,7 +69,16 @@ export interface ToolOutcomeLog extends LogMetadata {
   };
 }
 
-export type LogEvent = InitPluginEvent | EventLogEvent | ToolIntentLog | ToolOutcomeLog;
+export interface ToolAssessmentLog extends LogMetadata {
+  tag: "balrog.tool.assessed";
+  "balrog.tool.assessed": {
+    type: "balrog.tool.assessed";
+    created: number;
+    data: { sessionID: string; id: string; reason: string; outcome: string };
+  };
+}
+
+export type LogEvent = InitPluginEvent | EventLogEvent | ToolIntentLog | ToolOutcomeLog | ToolAssessmentLog;
 export type LogEventListener = (event: LogEvent) => void;
 
 /** Receives log events over HTTP and publishes each valid event to subscribers. */

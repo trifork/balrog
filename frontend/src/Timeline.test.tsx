@@ -256,6 +256,21 @@ test("duplicate recorder events update the first command icon instead of adding 
   expect(onSelect).toHaveBeenLastCalledWith(2);
 });
 
+test("retro assessment events fill missing timeline values without adding command markers", () => {
+  const original = event(1, "session.tool.called", { ...read, reason: null });
+  const { rerender } = render(<Timeline events={[original]} onSelect={vi.fn()} />);
+  fireEvent.pointerEnter(screen.getByRole("button", { name: /^Jump to command/ }), { pointerType: "mouse" });
+  const assessment = event(2, "balrog.tool.assessed", {
+    ...read, reason: "Inferred: find setup instructions.", outcome: "The README contains setup instructions.",
+  });
+  assessment.event = { ...assessment.event, pluginID: "balrog-retro" };
+  rerender(<Timeline events={[original, assessment]} onSelect={vi.fn()} />);
+  expect(screen.getAllByRole("button", { name: /^Jump to command/ })).toHaveLength(1);
+  const tooltip = within(screen.getByRole("tooltip"));
+  expect(tooltip.getByText("Inferred: find setup instructions.")).toBeTruthy();
+  expect(tooltip.getByText("The README contains setup instructions.")).toBeTruthy();
+});
+
 test("separate calls of the same command and calls in different sessions retain separate icons", () => {
   render(<Timeline events={[
     event(1, "session.tool.called", read),

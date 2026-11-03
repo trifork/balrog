@@ -3,6 +3,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import type { ViewerMessage, ViewerResponse } from "../shared/viewer-protocol.js";
 import { isPermissionReply } from "../shared/permission-protocol.js";
 import { SessionAnalyzer } from "./analyzer.js";
+import { receiveAssessments } from "./assessments.js";
 import { conversationSnapshot } from "./conversation.js";
 import { eventContent } from "./event-content.js";
 import { FileActivityTracker, type PromptActivity } from "./file-activity.js";
@@ -26,7 +27,8 @@ export class LogViewer {
   private readonly ownsServer: boolean;
   private readonly unsubscribePermissions?: () => void;
 
-  constructor(private readonly analyzer = new SessionAnalyzer(), private readonly permissions?: PermissionBroker, server?: Server) {
+  constructor(private readonly analyzer = new SessionAnalyzer(), private readonly permissions?: PermissionBroker, server?: Server,
+    private readonly persistAssessment?: (event: LogEvent) => void) {
     this.unsubscribePermissions = permissions?.subscribe(() => {
       for (const client of this.subscribers) this.send(client, { type: "permissions", permissions: permissions.list() });
     });
@@ -39,18 +41,26 @@ export class LogViewer {
         response.end("Forbidden host");
         return;
       }
-      if (request.method !== "GET") {
-        response.writeHead(405, { Allow: "GET" });
-        response.end("Method not allowed");
-        return;
-      }
-
       let pathname: string;
       try {
         pathname = new URL(request.url ?? "/", "http://localhost").pathname;
       } catch {
         response.writeHead(400);
         response.end("Invalid request URL");
+        return;
+      }
+      if (pathname.startsWith("/api/sessions/") && pathname.endsWith("/assessments")) {
+        void receiveAssessments(request, response,
+          pathname.slice("/api/sessions/".length, -"/assessments".length), this.analyzer, (event) => {
+            this.persistAssessment?.(event);
+            this.analyzer.process(event);
+            this.publish(event);
+          });
+        return;
+      }
+      if (request.method !== "GET") {
+        response.writeHead(405, { Allow: "GET" });
+        response.end("Method not allowed");
         return;
       }
       if (pathname === "/api/sessions") {

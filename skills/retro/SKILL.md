@@ -2,7 +2,7 @@
 name: retro
 description: Review a Balrog session and propose repository and AI-instruction improvements with evidence, complexity, and expected gain.
 disable-model-invocation: true
-compatibility: Requires read-only HTTP access to Balrog. The optional retrieval helper requires Node.js 18 or later.
+compatibility: Requires HTTP GET and POST access to Balrog. The optional retrieval helper requires Node.js 18 or later.
 ---
 
 # Balrog retrospective
@@ -13,7 +13,8 @@ in [assets/retro-output.md](assets/retro-output.md). Read that editable Markdown
 template before composing the report. It owns the report layout and table
 columns; fill its placeholders and repeat rows as needed. Resolve it relative
 to this skill's base directory, not the repository being reviewed.
-This is a read-only review, not approval to apply its recommendations.
+Publish calculated reasons and outcomes to Balrog as separate retrospective annotations.
+Repository recommendations still require separate approval before implementation.
 
 ## 1. Select the session and snapshot
 
@@ -97,7 +98,8 @@ include it. State the number excluded. Missing outcomes on reporting-only
 wrappers are not failed work calls.
 
 Assign `reason` and `outcome` in the report as retrospective assessments. The
-original records remain unchanged. State this provenance once above the table.
+original records remain unchanged; Balrog stores assessments as separate annotations.
+State this provenance once above the table.
 These columns are your evidence-based interpretations, not the original agent's
 reports or access to its private reasoning. Historical recorded annotations can
 support an assessment, but must be checked against the actual conversation and results.
@@ -187,7 +189,43 @@ Candidate improvement patterns include both instructions and general structure:
   repeatedly touch many coupled files for a small change. File moves alone are
   not proof of a clearer architecture.
 
-## 5. Finish with a testable recommendation
+## 5. Publish the call assessments
+
+After completing the shared analysis, send one batch with an available HTTP tool:
+
+`POST http://localhost:5001/api/sessions/<encoded-session-id>/assessments`
+
+Use the same target session and server as the conversation GET.
+Set `Content-Type: application/json` and send this body:
+
+```json
+{
+  "assessments": [
+    {
+      "callID": "<original Balrog call ID>",
+      "reason": "Inferred: find setup instructions.",
+      "outcome": "The README contains setup instructions."
+    }
+  ]
+}
+```
+
+Include one entry per included call, mapped to its original `callID`, not its numeric display ID.
+Send the same redacted assessments used in the report, before Markdown table escaping.
+Keep `unknown` and pending assessments explicit as non-empty strings.
+Omit excluded helpers and calls outside the snapshot. Skip publication when no calls remain.
+Publish only reasons and outcomes, not recommendations, arguments, or raw results.
+The endpoint accepts at most 1 MiB and rejects duplicate or unknown call IDs before writing.
+If the batch exceeds this limit, disclose the publication limit rather than silently dropping entries.
+
+Verify a successful response contains the target `sessionID` and the expected `updated` count.
+Balrog persists separate `balrog.tool.assessed` events and updates the live timeline.
+Later assessments replace displayed values for the same calls without changing raw evidence.
+On an HTTP error, unreachable server, or invalid acknowledgement, retain the report and disclose the publication failure.
+Report whether publication succeeded and how many calls were published.
+Do not claim the frontend was updated unless publication succeeded.
+
+## 6. Finish with a testable recommendation
 
 State the session ID, assessment coverage, excluded helper count, whether review-time
 calls were excluded, and limits of the evidence. Show the cutoff timestamp only
@@ -199,5 +237,5 @@ is not success. Note model, revision, or task differences that confound comparis
 
 Do not edit files, restructure modules, modify original Balrog records, create
 issues, or commit changes during `/retro`. Ask for separate approval to apply a
-proposal. Normal tracing of this retrospective may occur; its estimates and
-assessments and suggestions are not written back to Balrog.
+proposal. Only the call assessments are written back through the endpoint above.
+Normal tracing of this retrospective may also occur.

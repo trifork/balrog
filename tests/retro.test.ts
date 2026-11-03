@@ -110,6 +110,11 @@ test("retro assesses the whole conversation in one pass without per-tool model c
   assert.match(content, /Co-locate tightly related implementation, settings, and tests by feature/);
   assert.match(content, /Do not edit files, restructure modules/);
   assert.match(content, /original records remain unchanged/);
+  assert.match(content, /POST.*\/api\/sessions\/.*\/assessments/);
+  assert.match(content, /original `callID`/);
+  assert.match(content, /one batch/);
+  assert.doesNotMatch(content, /assessments and suggestions are not written back|Requires read-only HTTP/);
+  assert.match(content, /Report whether publication succeeded/);
   assert.doesNotMatch(content, /Preserve `reason` and `outcome` verbatim|A missing outcome stays `null`/);
   assert.match(template, /retrospective assessments/);
 });
