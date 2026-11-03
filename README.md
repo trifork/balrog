@@ -389,7 +389,7 @@ time, as indicated by `timestampSource`.
 
 ### Query tool executions
 
-The viewer exposes recorded V2 tool executions at:
+The viewer exposes recorded V2 tool executions and observed skill activations at:
 
 ```text
 GET http://localhost:5002/api/tool-executions
@@ -398,8 +398,9 @@ GET http://localhost:5002/api/tool-executions?session=<sessionID>
 
 Without `session`, the endpoint selects the single most recently active session
 by its latest event timestamp. Timestamp ties use the last received activity.
-URL-encode the session ID when supplying it. The response has one entry per
-tool-call ID, ordered by `startedAt` descending, with unknown start times last:
+URL-encode the session ID when supplying it. The `executions` array is unchanged:
+one entry per tool-call ID, ordered by `startedAt` descending, with unknown start
+times last. Skill activations are listed separately in `skills`:
 
 ```json
 {
@@ -413,6 +414,16 @@ tool-call ID, ordered by `startedAt` descending, with unknown start times last:
       "reason": "Run the tests to check the change.",
       "outcome": "The tests passed; no regression was detected by this suite.",
       "result": [{ "type": "text", "text": "All tests passed" }]
+    }
+  ],
+  "skills": [
+    {
+      "id": "review",
+      "name": "Review",
+      "activatedAt": 1699999999000,
+      "timestampSource": "event",
+      "source": "prompt",
+      "inboxID": "prompt-1"
     }
   ]
 }
@@ -438,11 +449,39 @@ tool-call ID, ordered by `startedAt` descending, with unknown start times last:
   for the table's human-readable result, and retain `result` as raw evidence.
   Reporting-tool calls are excluded from the execution list.
 
+The additive `skills` array lists observed skill activations, newest first.
+It does not add fields or synthetic entries to `executions`:
+
+- `source: "prompt"`: structured skills from
+  `session.inbox.enqueued.data.item.payload.skills`, confirmed by
+  `session.inbox.delivered` with the same session and `inboxID`. Queued or
+  cancelled attachments alone and plain `@skill` text do not count.
+- `source: "tool"`: a `skill` tool name and its `id` (or legacy `name`) argument,
+  correlated with a successful completion by session and `callID`. Failed or
+  unfinished attempts do not count as activations. Skill-tool calls remain in
+  `executions` unchanged; successful loads also appear here, linked by `callID`.
+- `source: "native"`: a recorded `session.skill.activated` event.
+
+Each skill entry includes its `id`, `name` (falling back to its ID), `activatedAt`
+in Unix milliseconds, and `timestampSource` (`event`, `recorded`, or `received`).
+Prompt entries include `inboxID`, tool entries include `callID`, and native event
+IDs are preserved as `eventID` when available. Prompt timestamps use delivery
+time; tool activation timestamps use successful completion time. Skill instructions
+are not copied into this list; the original evidence remains in the raw events/results.
+These observations are reconstructed on replay as well as during live capture.
+
+Repeated invocations are retained, while duplicate event IDs, inbox deliveries,
+and tool completions are not counted twice. Native activations have no inbox or
+tool-call identity, so potentially overlapping native and derived evidence stays
+separate rather than guessing which invocation it belongs to. This is an evidence
+list, not a unique activation count or a list of skills currently active. Missing
+events cannot be reconstructed, and no deactivation or model adherence is inferred.
+
 An unknown explicit session returns HTTP 404. With no recorded sessions, the
-response is `{ "sessionID": null, "executions": [] }`. A known session with no
-tool executions returns its ID and an empty array. There is no score or separate
-table page. The endpoint exposes the same sensitive arguments and outputs as
-the event feed and is intended for local use.
+response is `{ "sessionID": null, "executions": [], "skills": [] }`. A known
+session with no tool executions or skill activations returns its ID and empty
+arrays. There is no score or separate table page. The endpoint exposes the same
+sensitive arguments and outputs as the event feed and is intended for local use.
 
 ### Review a session with /retro
 

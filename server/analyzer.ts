@@ -1,6 +1,7 @@
 import type { LogEvent } from "./log-receiver.js";
 import { eventMetadata } from "./event-metadata.js";
 import { SessionActivityAnalyzer, type SessionActivity } from "./session-activity.js";
+import { SessionSkillAnalyzer, type SkillActivation } from "./session-skills.js";
 import { OUTCOME_HINT_METADATA, OUTCOME_TOOL_ID } from "../plugin/shared/tracing.js";
 
 export interface SessionSummary {
@@ -63,6 +64,7 @@ export class SessionAnalyzer {
   private readonly sessions = new Map<string, MutableSessionSummary>();
   private readonly toolCalls = new Map<string, ToolCallSummary>();
   private readonly activity = new SessionActivityAnalyzer();
+  private readonly skills = new SessionSkillAnalyzer();
   private readonly toolNames = new Map<string, string>();
   private readonly executions = new Map<string, Map<string, ToolExecution>>();
   private readonly context = new Map<string, Map<string, string>>();
@@ -79,6 +81,7 @@ export class SessionAnalyzer {
 
   process(event: LogEvent): void {
     this.activity.process(event);
+    this.skills.process(event);
     const envelope = event as unknown as Record<string, unknown>;
     const tag = nonEmptyString(envelope["tag"]);
     if (!tag) return;
@@ -228,6 +231,10 @@ export class SessionAnalyzer {
   getToolExecutions(sessionID: string): ToolExecution[] {
     return [...(this.executions.get(sessionID)?.values() ?? [])]
       .sort((left, right) => (right.startedAt ?? -Infinity) - (left.startedAt ?? -Infinity));
+  }
+
+  getSkillActivations(sessionID: string): SkillActivation[] {
+    return this.skills.getActivations(sessionID);
   }
 
   getToolCall(event: LogEvent): ToolCallSummary | undefined {

@@ -44,6 +44,7 @@ test("tool executions endpoint correlates tool names, arguments, context and res
   assert.equal(response.headers.get("Content-Type"), "application/json; charset=utf-8");
   assert.deepEqual(await response.json(), {
     sessionID: "session-1",
+    skills: [],
     executions: [{
       callID: "call-1",
       command: { name: "shell", args: { command: "npm test" } },
@@ -62,6 +63,44 @@ test("tool executions endpoint correlates tool names, arguments, context and res
   assert.deepEqual(updated.executions[0].result, [{ type: "text", text: "All tests passed" }]);
 });
 
+test("tool executions endpoint includes delivered, tool-loaded and native skill observations", async (t) => {
+  const { analyzer, origin } = await startViewer(t);
+  const events = [
+    nativeEvent("session.inbox.enqueued", "skills", 100, {
+      inboxID: "prompt", item: { type: "user", payload: { skills: [{ id: "find-skills", name: "Find Skills" }] } },
+    }),
+    nativeEvent("session.inbox.delivered", "skills", 200, { inboxID: "prompt" }),
+    nativeEvent("session.tool.input.started", "skills", 300, { id: "load", name: "skill" }),
+    nativeEvent("session.tool.called", "skills", 350, { id: "read", tool: "read", input: { path: "README.md" } }),
+    nativeEvent("session.tool.success", "skills", 360, { id: "read", result: "Documentation" }),
+    nativeEvent("session.tool.called", "skills", 400, { id: "load", input: { id: "opencode" } }),
+    nativeEvent("session.tool.success", "skills", 500, { id: "load", result: "Skill instructions" }),
+    nativeEvent("session.skill.activated", "skills", 600, { id: "review", name: "Review" }),
+  ];
+  events.forEach((value) => analyzer.process(value));
+  const response = await fetch(`${origin}/api/tool-executions?session=skills`);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Cache-Control"), "no-store");
+  const body = await response.json();
+  assert.deepEqual(body.skills, [
+    { id: "review", name: "Review", activatedAt: 600, timestampSource: "event", source: "native" },
+    { id: "opencode", name: "opencode", activatedAt: 500, timestampSource: "event", source: "tool", callID: "load" },
+    { id: "find-skills", name: "Find Skills", activatedAt: 200, timestampSource: "event", source: "prompt", inboxID: "prompt" },
+  ]);
+  assert.deepEqual(body.executions, [{
+    callID: "load", command: { name: "skill", args: { id: "opencode" } },
+    startedAt: 400, completedAt: 500, reason: null, outcome: null, result: "Skill instructions",
+  }, {
+    callID: "read", command: { name: "read", args: { path: "README.md" } },
+    startedAt: 350, completedAt: 360, reason: null, outcome: null, result: "Documentation",
+  }]);
+  assert.deepEqual((await (await fetch(`${origin}/api/tool-executions`)).json()).executions, body.executions);
+  assert.deepEqual((await (await fetch(`${origin}/api/tool-executions`)).json()).skills, body.skills);
+  analyzer.process(nativeEvent("session.created", "other", 700, {}));
+  assert.deepEqual((await (await fetch(`${origin}/api/tool-executions`)).json()).executions, []);
+  assert.deepEqual((await (await fetch(`${origin}/api/tool-executions`)).json()).skills, []);
+});
+
 test("tool executions endpoint defaults to the latest active session and handles missing sessions", async (t) => {
   const analyzer = new SessionAnalyzer();
   const viewer = new LogViewer(analyzer);
@@ -71,17 +110,17 @@ test("tool executions endpoint defaults to the latest active session and handles
   assert.ok(address && typeof address !== "string");
   const endpoint = `http://localhost:${address.port}/api/tool-executions`;
 
-  assert.deepEqual(await (await fetch(endpoint)).json(), { sessionID: null, executions: [] });
+  assert.deepEqual(await (await fetch(endpoint)).json(), { sessionID: null, executions: [], skills: [] });
   analyzer.process(nativeEvent("session.created", "older", 100, {}));
   analyzer.process(nativeEvent("session.created", "latest / session", 200, {}));
   // Delayed events do not make an older session the latest active session.
   analyzer.process(nativeEvent("session.renamed", "older", 150, { title: "Older" }));
   assert.deepEqual(await (await fetch(endpoint)).json(), {
-    sessionID: "latest / session", executions: [],
+    sessionID: "latest / session", executions: [], skills: [],
   });
   const explicit = await fetch(`${endpoint}?session=${encodeURIComponent("latest / session")}`);
   assert.equal(explicit.status, 200);
-  assert.deepEqual(await explicit.json(), { sessionID: "latest / session", executions: [] });
+  assert.deepEqual(await explicit.json(), { sessionID: "latest / session", executions: [], skills: [] });
 
   // Resolve timestamp ties by the last received activity, not session creation order.
   analyzer.process(nativeEvent("session.renamed", "older", 200, { title: "Active again" }));
