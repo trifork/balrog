@@ -1,21 +1,60 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { FileActivity } from "./FileActivity";
 import { Icon } from "./Icon";
 import { SessionTabs } from "./SessionTabs";
 import { StatusDot } from "./StatusDot";
-import { useViewer } from "./useViewer";
+import { useViewer, type ReceivedEvent } from "./useViewer";
+import { PermissionRequests } from "./PermissionRequests";
+import { ReadWarning } from "./ReadWarning";
+import { Timeline } from "./Timeline";
 
 const sessionFromURL = () => new URL(window.location.href).searchParams.get("session") || "";
 
 export function App() {
-  const { events, sessions, status, error } = useViewer();
+  const { events, sessions, status, error, permissions, replyPermission } = useViewer();
   const [selected, setSelected] = useState(sessionFromURL);
+  const [timelineEvents, setTimelineEvents] = useState<ReceivedEvent[]>([]);
+  const [activeEventID, setActiveEventID] = useState<number>();
+  const [followingLive, setFollowingLive] = useState(true);
+  const [jumpRequest, setJumpRequest] = useState<{ id: number }>();
+
+  const scrubToEvent = useCallback((id: number) => {
+    setFollowingLive(false);
+    setActiveEventID(id);
+    setJumpRequest({ id });
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!followingLive) return;
+    const latest = timelineEvents.at(-1);
+    const card = latest ? document.getElementById(`event-${latest.id}`) : null;
+    if (card && !card.hidden) card.scrollIntoView?.({ block: "start", behavior: "instant" });
+  }, [followingLive, timelineEvents]);
+
+  const resumeLive = useCallback(() => {
+    setFollowingLive(true);
+    setActiveEventID(undefined);
+    setJumpRequest(undefined);
+  }, []);
+
+  const toggleLive = () => {
+    if (!followingLive) {
+      resumeLive();
+      return;
+    }
+    const latest = timelineEvents.at(-1);
+    if (latest) scrubToEvent(latest.id);
+  };
 
   useEffect(() => {
-    const onPopState = () => setSelected(sessionFromURL());
+    const onPopState = () => {
+      setSelected(sessionFromURL());
+      setTimelineEvents([]);
+      resumeLive();
+    };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+  }, [resumeLive]);
 
   const selectSession = (sessionID: string) => {
     if (selected === sessionID) return;
@@ -24,10 +63,12 @@ export function App() {
     else url.searchParams.delete("session");
     window.history.pushState(null, "", url);
     setSelected(sessionID);
+    setTimelineEvents([]);
+    resumeLive();
   };
 
   return (
-    <div className="viewer-app group/app" data-connection={status}>
+    <div className="viewer-app group/app min-w-0 grid-rows-[auto_minmax(0,1fr)_40px]" data-connection={status}>
       <header className="viewer-header">
         <div className="flex items-center gap-2">
           <Icon name="flame" className="h-7 w-6 text-accent" />
@@ -40,9 +81,13 @@ export function App() {
       </header>
       <main className="viewer-main">
         {error && <p role="alert" className="viewer-error">{error}</p>}
-        <FileActivity events={events} sessions={sessions} selectedSession={selected} />
+        {permissions.length > 0 && <div className="max-h-[35dvh] shrink-0 overflow-auto px-7 pt-4 [&>.read-approvals]:mb-0 max-[760px]:px-3">
+          <PermissionRequests requests={permissions} sessions={sessions} live={status === "live"} onReply={replyPermission} />
+        </div>}
+        <FileActivity events={events} sessions={sessions} selectedSession={selected} activeEventID={activeEventID} cutoffEventID={followingLive ? undefined : activeEventID ?? 0} onVisibleEventsChange={setTimelineEvents} jumpRequest={jumpRequest} />
       </main>
-      <footer className="viewer-footer" aria-label="Bottom bar"><span>Recorded file-tool activity</span><span>Select a cell to inspect · Arrow keys move between cells</span></footer>
+      <footer className="min-w-0 border-t border-line bg-frame" aria-label="Bottom bar"><Timeline events={timelineEvents} activeEventID={followingLive ? undefined : activeEventID} onSelect={scrubToEvent} followingLive={followingLive} onToggleLive={toggleLive} /></footer>
+      <ReadWarning requests={permissions} live={status === "live"} />
     </div>
   );
 }

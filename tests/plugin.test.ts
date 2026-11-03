@@ -197,6 +197,7 @@ test("V2 subscribes to native events and records them without modifying them", a
     app: { version: "2.2.0" },
     location: { directory: "C:/project", project: { id: "project-1" } },
     options: {},
+    permission: { hook: async () => ({ dispose: async () => {} }) },
     event: {
       async *subscribe(options: { types?: string[]; signal: AbortSignal }) {
         assert.equal(options.types, undefined);
@@ -245,6 +246,7 @@ test("V2 plugin options configure the log endpoint and log path", async (t) => {
     app: { version: "2.2.0" },
     location: { directory: "C:/project", project: { id: "project-1" } },
     options: { logEndpoint, logPath },
+    permission: { hook: async () => ({ dispose: async () => {} }) },
     event: {
       async *subscribe() {},
     },

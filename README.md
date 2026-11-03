@@ -208,7 +208,8 @@ requests receive `{ "type": "error", "message": "..." }`. Each message includes
 a viewer-local numeric ID alongside the original event envelope and display
 metadata. The native event is not modified. Reconnecting requests a fresh
 snapshot and replaces the feed, avoiding duplicate events. The old `/events`
-SSE endpoint is no longer available. WebSocket requests do not control OpenCode.
+SSE endpoint is no longer available. WebSocket permission replies can release
+live sensitive-read gates in OpenCode V2; historical events are read-only.
 File-tree state is attached as `fileActivity`; when one event affects several
 prompts, additional prompt snapshots are included in `fileActivityUpdates`.
 
@@ -259,6 +260,12 @@ content or commands and filter by event type to narrow the feed further. Expand
 **Raw event** to inspect the original JSON, or use **Collapse all** to compact
 visible events. Search, filters, and expanded raw details survive live updates.
 
+The bottom timeline follows the filtered event stream. Select an event to open
+the stream and pause playback at that point, or use the prompt-navigation
+buttons and keyboard arrows to move through it. **Go live** resumes incoming
+events. Playback only pauses the event display; recording, the file heatmap,
+and live read approvals continue updating.
+
 The viewer recognizes V1 prompt/tool hooks and V2 delivered user prompts and
 file-tool events, including multi-file `patch` and `apply_patch` calls. V2 also records
 `session.inbox.enqueued`, `session.inbox.delivered`, and
@@ -271,6 +278,56 @@ commands, search results, and diffs are not inferred. Calls belong to the prompt
 active when they were observed, with completion linked by call ID; this is not
 causal attribution for concurrent prompts or agents. Activity is reconstructed
 when replaying a SQLite recording.
+
+### Approve sensitive file reads
+
+The V2 plugin registers a `permission.evaluate` hook that requires approval for
+reads matching the constant `SENSITIVE_FILES` list in
+`plugin/v2/sensitive-files.ts`, even when the ordinary read rules allow access or
+the OpenCode CLI has `session.permissions: "autoaccept"`:
+
+- `.env` and `.env.*`
+- `appsettings.json` and `appsettings.*.json`
+- `.npmrc`, `.pypirc`, and `.netrc`
+- SSH private-key names: `id_rsa`, `id_ed25519`, `id_ecdsa`, and `id_dsa`
+- `*.pem` and `*.key`
+- `.aws/credentials` and `.kube/config`
+
+Matching handles Windows and POSIX separators, case-insensitive file names, and
+resolved symlink targets. Explicit OpenCode deny rules remain final. Other read
+requests and non-read actions are unchanged. This is not a filesystem sandbox:
+shell commands and tools that do not request OpenCode's `read` permission are
+outside this hook's scope. V1 is unchanged.
+
+Run `npm run view` and open the frontend. Pending sensitive reads appear in
+**Read approvals**, above the event feed regardless of the selected session or
+search filters. **Accept once** approves that exact pending gate and releases
+only that read; **Reject** denies it. Each read requires its own
+approval. The plugin holds permission evaluation on a private Balrog gate before
+OpenCode can publish or auto-accept a native prompt. Native permission replies
+cannot release that gate, and approval in Balrog avoids a second OpenCode
+prompt. Ordinary autoaccept settings remain unchanged. Requests show file paths
+and session identity, not file contents.
+
+The plugin connects over WebSocket to `/permissions` on the same origin as
+`logEndpoint` (`ws://localhost:5001/permissions` by default). Changing the viewer's
+web-page port does not change this endpoint. Setting `logEndpoint` to an empty
+string disables the connection and denies sensitive reads, since frontend
+approval is mandatory. The recorder-only `npm run record` process does not
+provide approval controls; use the viewer to approve sensitive reads.
+
+Browser and plugin connections reconnect automatically. Pending gates remain in
+the plugin and are resynchronized after a transport reconnect. Disconnected
+plugins have no actionable requests in the browser, and their reads stay
+blocked. An outage, timeout, or failed reply never grants permission; there is no
+native-only fallback. Interrupting a session or unloading the plugin denies its
+unresolved gates. After a plugin reload, retry any cancelled reads. Recorded or
+replayed permission events never create actionable requests. The plugin endpoint rejects
+browser Origin headers, while browser approval messages use the viewer's
+same-origin WebSocket. Both servers also restrict Host headers to `localhost`,
+`127.0.0.1`, or `[::1]` to prevent DNS rebinding. Keep both servers on localhost
+and use only trusted local clients. Pre-existing native prompts remain mirrored
+for compatibility, separately from mandatory Balrog gates.
 
 The viewer also exposes the analyzer's session summaries as JSON at
 `http://localhost:5002/api/sessions` and an individual session at

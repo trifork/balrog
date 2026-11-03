@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { SessionSummary } from "../../shared/viewer-protocol";
 import { EventFeed } from "./EventFeed";
 import { FileHeatmap } from "./FileHeatmap";
@@ -13,10 +13,16 @@ interface Selection {
   file: string | null;
 }
 
-export function FileActivity({ events, sessions, selectedSession }: {
+const emptyEventIDs: ReadonlySet<number> = new Set();
+
+export function FileActivity({ events, sessions, selectedSession, activeEventID, cutoffEventID, onVisibleEventsChange, jumpRequest }: {
   events: ReceivedEvent[];
   sessions: SessionSummary[];
   selectedSession: string;
+  activeEventID?: number;
+  cutoffEventID?: number;
+  onVisibleEventsChange?: (events: ReceivedEvent[]) => void;
+  jumpRequest?: { id: number };
 }) {
   const [selection, setSelection] = useState<Selection>({ session: selectedSession, prompt: null, file: null });
   const [search, setSearch] = useState("");
@@ -37,7 +43,7 @@ export function FileActivity({ events, sessions, selectedSession }: {
   const paths = allPaths.filter((path) => path.toLowerCase().includes(search.trim().toLowerCase()));
   const operations = prompts.reduce((total, item) => total + [...item.files.values()].reduce((sum, touches) => sum + operationCount(touches), 0), 0);
   const sessionTitle = (sessionID: string) => sessions.find((session) => session.sessionID === sessionID)?.title || sessionID;
-  const relatedIDs = prompt ? current.file ? prompt.fileEventIDs.get(current.file) ?? new Set<number>() : prompt.eventIDs : new Set<number>();
+  const relatedIDs = prompt ? current.file ? prompt.fileEventIDs.get(current.file) ?? emptyEventIDs : prompt.eventIDs : emptyEventIDs;
   const related = relatedSession === selectedSession && Boolean(prompt);
   const scope = related && prompt ? `Prompt ${promptNumber(index)}${current.file ? ` / ${fileName(current.file)}` : " / all files"}` : "All events";
   const eventCount = related ? relatedIDs.size : events.filter((message) => !selectedSession || (message.session?.sessionID ?? message.event.sessionID) === selectedSession).length;
@@ -51,6 +57,16 @@ export function FileActivity({ events, sessions, selectedSession }: {
   useEffect(() => {
     if (mobileOpen && window.matchMedia("(max-width: 760px)").matches) closeRef.current?.focus();
   }, [mobileOpen]);
+
+  useLayoutEffect(() => {
+    if (jumpRequest) setTraceOpen(true);
+  }, [jumpRequest]);
+
+  useLayoutEffect(() => {
+    if (!jumpRequest || !traceOpen) return;
+    const card = document.getElementById(`event-${jumpRequest.id}`);
+    if (card && !card.hidden) card.scrollIntoView?.({ block: "center", behavior: "instant" });
+  }, [jumpRequest, traceOpen]);
 
   const select = (key: string, file: string | null, element?: HTMLElement) => {
     if (element) opener.current = element;
@@ -97,7 +113,7 @@ export function FileActivity({ events, sessions, selectedSession }: {
         <summary ref={traceSummary}><Icon name="right" className="trace-chevron size-3.5" /><span>Event stream</span><span className="trace-count">{eventCount.toLocaleString()}</span><span className="trace-scope">{scope}</span><span className="trace-hint">The details, when you need them.</span></summary>
         <div className="activity-trace-body" hidden={!traceOpen}>
           {related && <div className="trace-filter"><span>{scope}</span><button type="button" className="activity-text-button" onClick={() => setRelatedSession(null)}>Show all events</button></div>}
-          <EventFeed events={events} selectedSession={selectedSession} sessionTitle={selectedSession ? sessionTitle(selectedSession) : undefined} eventIDs={related ? relatedIDs : undefined} />
+          <EventFeed events={events} selectedSession={selectedSession} sessionTitle={selectedSession ? sessionTitle(selectedSession) : undefined} eventIDs={related ? relatedIDs : undefined} activeEventID={activeEventID} cutoffEventID={cutoffEventID} onVisibleEventsChange={onVisibleEventsChange} />
         </div>
       </details>
       <span className="sr-only" role="status" aria-live="polite">{announcement}</span>

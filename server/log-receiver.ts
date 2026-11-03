@@ -1,5 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { OpenCodeEvent } from "@opencode/protocol/groups/event";
+import type { PermissionBroker } from "./permissions.js";
+import { isLoopbackHost } from "./loopback.js";
 
 interface LogMetadata {
   /** Recorder observation time in Unix milliseconds (older logs may omit it). */
@@ -45,12 +47,17 @@ export class LogReceiver {
   private readonly listeners = new Set<LogEventListener>();
   private readonly server: Server;
 
-  constructor() {
+  constructor(private readonly permissions?: PermissionBroker) {
     this.server = createServer(async (request, response) => {
       const reply = (status: number, body: object) => {
         response.writeHead(status, { "Content-Type": "application/json" });
         response.end(JSON.stringify(body));
       };
+
+      if (!isLoopbackHost(request.headers.host)) {
+        reply(403, { error: "Forbidden host" });
+        return;
+      }
 
       if (request.url !== "/log") {
         reply(404, { error: "Not found" });
@@ -89,6 +96,7 @@ export class LogReceiver {
         reply(400, { error: "Invalid JSON or incomplete request" });
       }
     });
+    permissions?.attach(this.server);
   }
 
   subscribe(listener: LogEventListener): () => void {
@@ -98,5 +106,16 @@ export class LogReceiver {
 
   listen(port: number, host: string, callback?: () => void): void {
     this.server.listen(port, host, callback);
+  }
+
+  address() {
+    return this.server.address();
+  }
+
+  close(): Promise<void> {
+    this.permissions?.close();
+    return new Promise((resolve, reject) => {
+      this.server.close((error) => error ? reject(error) : resolve());
+    });
   }
 }

@@ -3,7 +3,9 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { useViewer } from "./useViewer";
 
 class MockWebSocket {
+  static OPEN = 1;
   static instances: MockWebSocket[] = [];
+  readyState = MockWebSocket.OPEN;
   onopen: (() => void) | null = null;
   onmessage: ((message: { data: string }) => void) | null = null;
   onclose: (() => void) | null = null;
@@ -77,4 +79,49 @@ test("ignores malformed server frames and surfaces protocol errors", () => {
   expect(result.current.events).toEqual([]);
   act(() => socket.receive({ type: "error", message: "Invalid request" }));
   expect(result.current.error).toBe("Invalid request");
+});
+
+const permission = {
+  pluginID: "p1", sessionID: "s1", requestID: "r1", resources: ["/src/appsettings.json"], status: "pending" as const,
+};
+
+test("permission snapshots and updates are separate from history and send exact once-only replies", () => {
+  const { result } = renderHook(() => useViewer());
+  const socket = MockWebSocket.instances[0];
+  act(() => socket.receive({ type: "snapshot", sessions: [], events: [], permissions: [permission] }));
+  expect(result.current.permissions).toEqual([permission]);
+  act(() => {
+    result.current.replyPermission(permission, "once");
+    result.current.replyPermission(permission, "once");
+  });
+  expect(socket.send).toHaveBeenCalledOnce();
+  expect(JSON.parse(socket.send.mock.calls[0][0])).toEqual({
+    type: "permission.reply", pluginID: "p1", sessionID: "s1", requestID: "r1", decision: "once",
+  });
+  expect(result.current.permissions[0].status).toBe("replying");
+  act(() => socket.receive({ type: "permissions", permissions: [] }));
+  expect(result.current.permissions).toEqual([]);
+  expect(result.current.events).toEqual([]);
+});
+
+test("permissions cannot be answered offline or replayed after removal, and a failed reply can be retried", () => {
+  const { result } = renderHook(() => useViewer());
+  const socket = MockWebSocket.instances[0];
+  act(() => result.current.replyPermission(permission, "once"));
+  expect(socket.send).not.toHaveBeenCalled();
+  act(() => socket.receive({ type: "snapshot", sessions: [], events: [], permissions: [permission] }));
+  act(() => result.current.replyPermission(permission, "reject"));
+  expect(JSON.parse(socket.send.mock.calls[0][0]).decision).toBe("reject");
+  act(() => {
+    socket.receive({ type: "permissions", permissions: [permission] });
+    socket.receive({ type: "error", message: "Native reply failed" });
+  });
+  act(() => result.current.replyPermission(permission, "once"));
+  expect(socket.send).toHaveBeenCalledTimes(2);
+  act(() => socket.receive({ type: "permissions", permissions: [] }));
+  act(() => result.current.replyPermission(permission, "once"));
+  expect(socket.send).toHaveBeenCalledTimes(2);
+  act(() => socket.onclose?.());
+  act(() => result.current.replyPermission(permission, "once"));
+  expect(socket.send).toHaveBeenCalledTimes(2);
 });

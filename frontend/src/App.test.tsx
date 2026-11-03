@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { Profiler } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import type { LogEvent } from "../../server/log-receiver";
 import { App } from "./App";
@@ -30,6 +31,8 @@ beforeEach(() => {
     matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn(),
   })));
   state = {
+    permissions: [],
+    replyPermission: vi.fn(),
     status: "live",
     sessions: [
       { sessionID: "s1", title: "First session", eventCount: 3, lastEventTag: "session.tool.failed", lastEventAt: 2, tags: [] },
@@ -173,7 +176,7 @@ test("keeps raw details open across filtering and lets new events inherit the co
 
 test("shows initial empty state and disables collapse when no event has content", async () => {
   const user = userEvent.setup();
-  state = { events: [], sessions: [], status: "connecting" };
+  state = { events: [], sessions: [], status: "connecting", permissions: [], replyPermission: vi.fn() };
   render(<App />);
   expect(screen.getByRole("heading", { name: "Ready when you are" })).toBeTruthy();
   await openEvents(user);
@@ -203,4 +206,94 @@ test("keeps session tabs in the header and scopes the heatmap and related event 
   expect(cards()).toHaveLength(1);
   expect(cards()[0].textContent).toContain("Hello agent");
   expect(screen.queryByRole("button", { name: "Compact" })).toBeNull();
+});
+
+test("read approvals remain visible when a different session and event filters are selected", async () => {
+  const user = userEvent.setup();
+  state.permissions = [{ pluginID: "p1", sessionID: "s1", requestID: "r1", resources: ["/project/appsettings.json"], status: "pending" }];
+  render(<App />);
+  await user.click(screen.getByRole("tab", { name: /Second session/ }));
+  expect(screen.getByRole("region", { name: "Read approvals" })).toBeTruthy();
+  await openEvents(user);
+  await user.type(screen.getByRole("searchbox", { name: "Search events" }), "not found");
+  expect(screen.getByRole("region", { name: "Read approvals" })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Accept once" }));
+  expect(state.replyPermission).toHaveBeenCalledWith(state.permissions[0], "once");
+});
+
+test("timeline scrubbing reveals the event drawer and Go live restores incoming events", async () => {
+  const user = userEvent.setup();
+  const { rerender } = render(<App />);
+  expect(screen.getByRole("heading", { name: "Files touched per prompt" })).toBeTruthy();
+  const slider = screen.getByRole("slider", { name: "Scrub to event" });
+  expect(slider.getAttribute("aria-valuenow")).toBe("4");
+  fireEvent.keyDown(slider, { key: "Home" });
+  expect(cards()).toHaveLength(1);
+  expect(cards()[0].id).toBe("event-1");
+  expect(screen.getByText("Playback paused. New events are still being recorded.")).toBeTruthy();
+  state = { ...state, events: [...state.events, message(5, "session.text.ended", "s1", "Newest")] };
+  rerender(<App />);
+  expect(cards()).toHaveLength(1);
+  await user.click(screen.getByRole("button", { name: "Resume live playback" }));
+  expect(cards()).toHaveLength(5);
+  expect(slider.getAttribute("aria-valuenow")).toBe("5");
+  expect(screen.getByText("Events appear automatically. No refresh needed.")).toBeTruthy();
+});
+
+test("the event drawer can close during paused playback and reopen on another timeline selection", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  fireEvent.keyDown(screen.getByRole("slider", { name: "Scrub to event" }), { key: "Home" });
+  expect(cards()).toHaveLength(1);
+  await openEvents(user);
+  expect(screen.queryByRole("region", { name: "Session events" })).toBeNull();
+  fireEvent.keyDown(screen.getByRole("slider", { name: "Scrub to event" }), { key: "End" });
+  expect(cards()).toHaveLength(4);
+});
+
+test("timeline follows session and related-event filters without hiding read approvals", async () => {
+  const user = userEvent.setup();
+  state.permissions = [{ pluginID: "p1", sessionID: "s1", requestID: "r1", resources: ["/project/appsettings.json"], status: "pending" }];
+  state.events[0] = {
+    ...state.events[0],
+    fileActivity: {
+      id: "1", sessionID: "s1", text: "Read a file",
+      files: [{ path: "src/file.ts", action: "read", outcome: "success", callID: "1" }],
+    },
+  };
+  render(<App />);
+  await user.click(screen.getByRole("tab", { name: /First session/ }));
+  expect(screen.getByRole("slider", { name: "Scrub to event" }).getAttribute("aria-valuemax")).toBe("3");
+  await user.click(screen.getByRole("button", { name: "Inspect 1 related events" }));
+  expect(cards()).toHaveLength(1);
+  expect(screen.getByRole("slider", { name: "Scrub to event" }).getAttribute("aria-valuemax")).toBe("1");
+  fireEvent.keyDown(screen.getByRole("slider", { name: "Scrub to event" }), { key: "Home" });
+  await user.click(screen.getByRole("tab", { name: /Second session/ }));
+  expect(cards()).toHaveLength(1);
+  expect(cards()[0].id).toBe("event-4");
+  expect(screen.getByRole("button", { name: "Pause live playback" })).toBeTruthy();
+  expect(screen.getByRole("region", { name: "Read approvals" })).toBeTruthy();
+});
+
+test("timeline remains stable when a related file has no events in the next prompt", async () => {
+  const user = userEvent.setup();
+  let commits = 0;
+  state.events = ["first", "second"].map((name, index) => ({
+    ...message(index + 1, "session.text.ended", "s1", name),
+    fileActivity: {
+      id: String(index + 1), sessionID: "s1", text: name,
+      files: [{ path: `src/${name}.ts`, action: "read" as const, outcome: "success" as const, callID: String(index + 1) }],
+    },
+  }));
+  render(<Profiler id="timeline-integration" onRender={() => {
+    if (++commits > 40) throw new Error("Timeline update loop");
+  }}><App /></Profiler>);
+  await user.click(screen.getByRole("button", { name: /^src\/first.ts, prompt 01:/ }));
+  await user.click(screen.getByRole("button", { name: "Inspect 1 related events" }));
+  expect(cards()).toHaveLength(1);
+  await user.click(within(screen.getByRole("complementary", { name: "Selected prompt and file" })).getByRole("button", { name: "Next prompt" }));
+  expect(cards()).toHaveLength(0);
+  expect(screen.queryByRole("slider", { name: "Scrub to event" })).toBeNull();
+  expect(screen.getByText("No recorded activity for this file in this prompt.")).toBeTruthy();
+  expect(commits).toBeLessThan(40);
 });
