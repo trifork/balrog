@@ -70,6 +70,7 @@ export class LogViewer {
         response.end(JSON.stringify(missing ? { error: "Session not found" } : {
           sessionID,
           executions: sessionID ? this.analyzer.getToolExecutions(sessionID) : [],
+          skills: sessionID ? this.analyzer.getSkillActivations(sessionID) : [],
         }));
         return;
       }
