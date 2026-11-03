@@ -118,3 +118,14 @@ test("retro assesses the whole conversation in one pass without per-tool model c
   assert.doesNotMatch(content, /Preserve `reason` and `outcome` verbatim|A missing outcome stays `null`/);
   assert.match(template, /retrospective assessments/);
 });
+
+test("retro writes purposes directly and qualifies uncertainty based on evidence, not assessment timing", async (t) => {
+  const { skills } = await setup(t);
+  const content = skills[0].content;
+  assert.match(content, /without an `Inferred:` prefix/);
+  assert.match(content, /Qualify actual uncertainty and use `unknown`/);
+  assert.match(content, /"reason": "Find setup instructions\."/);
+  assert.doesNotMatch(content, /"reason": "Inferred:|Distinguish an explicit explanation from an inference/);
+  const template = await readFile(new URL("../skills/retro/assets/retro-output.md", import.meta.url), "utf8");
+  assert.match(template, /evidence-supported purpose; unknown if unsupported/);
+});

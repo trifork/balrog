@@ -582,7 +582,7 @@ Assessments use `POST /api/sessions/<encoded-session-id>/assessments` with
 ```json
 {
   "assessments": [
-    { "callID": "original-call-id", "reason": "Inferred: find setup instructions.", "outcome": "Setup instructions found." }
+    { "callID": "original-call-id", "reason": "Find setup instructions.", "outcome": "Setup instructions found." }
   ]
 }
 ```

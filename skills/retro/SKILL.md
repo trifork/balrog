@@ -104,9 +104,11 @@ These columns are your evidence-based interpretations, not the original agent's
 reports or access to its private reasoning. Historical recorded annotations can
 support an assessment, but must be checked against the actual conversation and results.
 
-- `reason`: infer the call's likely purpose from the task, preceding discussion,
-  instructions, and arguments. Distinguish an explicit explanation from an inference.
-  Use `unknown` when the evidence does not establish a purpose.
+- `reason`: describe the call's purpose directly from the task, preceding discussion,
+  instructions, and arguments, without an `Inferred:` prefix. Writing a reason
+  retrospectively does not by itself make it less certain than one supplied at
+  call time. Qualify actual uncertainty and use `unknown` when the evidence does
+  not establish a purpose.
 - `outcome`: describe the finding, failure, or partial progress supported by that
   call's result. Mark a pending call as pending and an unavailable result as unknown.
   Later calls can explain its contribution; cite their display IDs and distinguish
@@ -203,7 +205,7 @@ Set `Content-Type: application/json` and send this body:
   "assessments": [
     {
       "callID": "<original Balrog call ID>",
-      "reason": "Inferred: find setup instructions.",
+      "reason": "Find setup instructions.",
       "outcome": "The README contains setup instructions."
     }
   ]
