@@ -161,10 +161,17 @@ test("V2 subscribes to native events and records them without modifying them", a
   const records = captureLogs(t);
   const events = [
     {
+      type: "session.tool.input.started",
+      data: {
+        sessionID: "session-1", assistantMessageID: "message-1",
+        id: "call-1", name: "read",
+      },
+    },
+    {
       type: "session.tool.called",
       data: {
-        sessionID: "session-1", tool: "read", id: "call-1",
-        messageID: "message-1", agent: "build", input: { filePath: "README.md" },
+        sessionID: "session-1", id: "call-1", executed: false,
+        assistantMessageID: "message-1", input: { filePath: "README.md" },
       },
     },
     {
@@ -207,6 +214,11 @@ test("V2 subscribes to native events and records them without modifying them", a
     app: { version: "2.2.0" },
     location: { directory: "C:/project", project: { id: "project-1" } },
     options: {},
+    permission: { hook: async () => ({ dispose: async () => {} }) },
+    tool: { transform: async () => ({ dispose: async () => {} }) },
+    session: { hook: async () => ({ dispose: async () => {} }) },
+    skill: { transform: async () => ({ dispose: async () => {} }) },
+    command: { transform: async () => ({ dispose: async () => {} }) },
     event: {
       async *subscribe(options: { types?: string[]; signal: AbortSignal }) {
         assert.equal(options.types, undefined);
@@ -255,6 +267,11 @@ test("V2 plugin options configure the log endpoint and log path", async (t) => {
     app: { version: "2.2.0" },
     location: { directory: "C:/project", project: { id: "project-1" } },
     options: { logEndpoint, logPath },
+    permission: { hook: async () => ({ dispose: async () => {} }) },
+    tool: { transform: async () => ({ dispose: async () => {} }) },
+    session: { hook: async () => ({ dispose: async () => {} }) },
+    skill: { transform: async () => ({ dispose: async () => {} }) },
+    command: { transform: async () => ({ dispose: async () => {} }) },
     event: {
       async *subscribe() {},
     },

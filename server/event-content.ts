@@ -6,6 +6,7 @@ export function eventContent(event: LogEvent): string | undefined {
   if (
     tag !== "session.tool.called" &&
     tag !== "session.tool.success" &&
+    tag !== "session.inbox.enqueued" &&
     !/(prompt|message|session\.text\.(?:ended|delta)|session\.synthetic)/i.test(tag)
   ) {
     return undefined;
@@ -32,7 +33,13 @@ export function eventContent(event: LogEvent): string | undefined {
   const inputObject = input && typeof input === "object"
     ? input as Record<string, unknown>
     : undefined;
-  const content = tag === "session.tool.called"
+  const item = dataObject?.["item"];
+  const itemObject = item && typeof item === "object" ? item as Record<string, unknown> : undefined;
+  const itemPayload = itemObject?.["payload"];
+  const prompt = itemPayload && typeof itemPayload === "object" ? itemPayload as Record<string, unknown> : undefined;
+  const content = tag === "session.inbox.enqueued"
+    ? itemObject?.["type"] === "user" ? prompt?.["text"] : undefined
+    : tag === "session.tool.called"
     ? dataObject?.["command"] ?? inputObject?.["command"] ?? payloadObject?.["command"]
     : dataObject?.["text"]
       ?? dataObject?.["content"]

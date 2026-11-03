@@ -8,6 +8,92 @@ import type { LogEvent } from "../server/log-receiver.js";
 import { LogViewer } from "../server/viewer.js";
 import type { ViewerResponse } from "../shared/viewer-protocol.js";
 
+function nativeEvent(tag: string, sessionID: string, created: number, data: object): LogEvent {
+  return {
+    tag, sessionID, pluginID: "plugin-viewer", apiVersion: "v2",
+    [tag]: { event: { type: tag, created, data: { sessionID, ...data } } },
+  } as unknown as LogEvent;
+}
+
+test("tool executions endpoint correlates tool names, arguments, context and results", async (t) => {
+  const analyzer = new SessionAnalyzer();
+  const viewer = new LogViewer(analyzer);
+  await new Promise<void>((resolve) => viewer.listen(0, "localhost", resolve));
+  t.after(() => viewer.close());
+  const address = viewer.address();
+  assert.ok(address && typeof address !== "string");
+  const origin = `http://localhost:${address.port}`;
+
+  for (const event of [
+    nativeEvent("session.text.ended", "session-1", 100, {
+      assistantMessageID: "message-1", text: "Run the tests to check the change.",
+    }),
+    nativeEvent("session.tool.input.started", "session-1", 110, {
+      assistantMessageID: "message-1", id: "call-1", name: "shell",
+    }),
+    nativeEvent("session.tool.called", "session-1", 120, {
+      assistantMessageID: "message-1", id: "call-1", input: { command: "npm test" },
+    }),
+    nativeEvent("session.tool.success", "session-1", 150, {
+      id: "call-1", content: [{ type: "text", text: "All tests passed" }],
+    }),
+  ]) analyzer.process(event);
+
+  const response = await fetch(`${origin}/api/tool-executions?session=session-1`);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Content-Type"), "application/json; charset=utf-8");
+  assert.deepEqual(await response.json(), {
+    sessionID: "session-1",
+    executions: [{
+      callID: "call-1",
+      command: { name: "shell", args: { command: "npm test" } },
+      startedAt: 120,
+      completedAt: 150,
+      reason: "Run the tests to check the change.",
+      outcome: null,
+      result: [{ type: "text", text: "All tests passed" }],
+    }],
+  });
+  analyzer.process(nativeEvent("balrog.tool.outcome", "session-1", 160, {
+    id: "call-1", reportCallID: "report-1", outcome: "The tests passed; no regression was detected by this suite.",
+  }));
+  const updated = await (await fetch(`${origin}/api/tool-executions?session=session-1`)).json();
+  assert.equal(updated.executions[0].outcome, "The tests passed; no regression was detected by this suite.");
+  assert.deepEqual(updated.executions[0].result, [{ type: "text", text: "All tests passed" }]);
+});
+
+test("tool executions endpoint defaults to the latest active session and handles missing sessions", async (t) => {
+  const analyzer = new SessionAnalyzer();
+  const viewer = new LogViewer(analyzer);
+  await new Promise<void>((resolve) => viewer.listen(0, "localhost", resolve));
+  t.after(() => viewer.close());
+  const address = viewer.address();
+  assert.ok(address && typeof address !== "string");
+  const endpoint = `http://localhost:${address.port}/api/tool-executions`;
+
+  assert.deepEqual(await (await fetch(endpoint)).json(), { sessionID: null, executions: [] });
+  analyzer.process(nativeEvent("session.created", "older", 100, {}));
+  analyzer.process(nativeEvent("session.created", "latest / session", 200, {}));
+  // Delayed events do not make an older session the latest active session.
+  analyzer.process(nativeEvent("session.renamed", "older", 150, { title: "Older" }));
+  assert.deepEqual(await (await fetch(endpoint)).json(), {
+    sessionID: "latest / session", executions: [],
+  });
+  const explicit = await fetch(`${endpoint}?session=${encodeURIComponent("latest / session")}`);
+  assert.equal(explicit.status, 200);
+  assert.deepEqual(await explicit.json(), { sessionID: "latest / session", executions: [] });
+
+  // Resolve timestamp ties by the last received activity, not session creation order.
+  analyzer.process(nativeEvent("session.renamed", "older", 200, { title: "Active again" }));
+  assert.equal((await (await fetch(endpoint)).json()).sessionID, "older");
+  analyzer.process(nativeEvent("session.renamed", "latest / session", 200, { title: "Also active" }));
+  assert.equal((await (await fetch(endpoint)).json()).sessionID, "latest / session");
+  const missing = await fetch(`${endpoint}?session=unknown`);
+  assert.equal(missing.status, 404);
+  assert.deepEqual(await missing.json(), { error: "Session not found" });
+  assert.equal((await fetch(endpoint, { method: "POST" })).status, 405);
+});
+
 async function startViewer(t: TestContext) {
   const analyzer = new SessionAnalyzer();
   const viewer = new LogViewer(analyzer);

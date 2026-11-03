@@ -4,6 +4,7 @@ import { SessionAnalyzer } from "./analyzer.js";
 import { SQLiteEventStore } from "./event-store.js";
 import { LogReceiver } from "./log-receiver.js";
 import { LogViewer } from "./viewer.js";
+import { PermissionBroker } from "./permissions.js";
 
 const { values } = parseArgs({
   options: {
@@ -15,9 +16,10 @@ const { values } = parseArgs({
 });
 
 const webPort = Number(values.port);
-const receiver = new LogReceiver();
+const permissions = new PermissionBroker();
+const receiver = new LogReceiver(permissions);
 const analyzer = new SessionAnalyzer();
-const viewer = new LogViewer(analyzer);
+const viewer = new LogViewer(analyzer, permissions);
 const store = values.db
   ? new SQLiteEventStore(path.resolve(values.db))
   : undefined;

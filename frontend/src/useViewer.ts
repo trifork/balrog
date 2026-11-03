@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { SessionSummary, ViewerMessage, ViewerRequest, ViewerResponse } from "../../shared/viewer-protocol";
+import { permissionKey, type PendingPermission, type PermissionDecision, type PermissionIdentity } from "../../shared/permission-protocol";
 
 export interface ReceivedEvent extends ViewerMessage {
   receivedAt: number;
@@ -9,11 +10,36 @@ export interface ViewerState {
   events: ReceivedEvent[];
   sessions: SessionSummary[];
   status: "connecting" | "live" | "reconnecting";
+  permissions: PendingPermission[];
+  replyPermission: (identity: PermissionIdentity, decision: PermissionDecision) => void;
   error?: string;
 }
 
 export function useViewer(): ViewerState {
-  const [state, setState] = useState<ViewerState>({ events: [], sessions: [], status: "connecting" });
+  const [state, setState] = useState<Omit<ViewerState, "replyPermission">>({ events: [], sessions: [], permissions: [], status: "connecting" });
+  const socketRef = useRef<WebSocket | null>(null);
+  const liveRef = useRef(false);
+  const permissionsRef = useRef<PendingPermission[]>([]);
+
+  const replyPermission = useCallback((identity: PermissionIdentity, decision: PermissionDecision) => {
+    const socket = socketRef.current;
+    const key = permissionKey(identity);
+    const request = permissionsRef.current.find((item) => permissionKey(item) === key);
+    if (!liveRef.current || !socket || socket.readyState !== WebSocket.OPEN || request?.status !== "pending") return;
+    const permissions = permissionsRef.current.map((item) => permissionKey(item) === key ? { ...item, status: "replying" as const } : item);
+    permissionsRef.current = permissions;
+    setState((previous) => ({ ...previous, permissions, error: undefined }));
+    try {
+      const message: ViewerRequest = {
+        type: "permission.reply", pluginID: identity.pluginID,
+        sessionID: identity.sessionID, requestID: identity.requestID, decision,
+      };
+      socket.send(JSON.stringify(message));
+    } catch {
+      permissionsRef.current = permissionsRef.current.map((item) => permissionKey(item) === key ? { ...item, status: "pending" } : item);
+      setState((previous) => ({ ...previous, permissions: permissionsRef.current, error: "Could not send the permission reply. Reconnect and try again." }));
+    }
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -25,6 +51,7 @@ export function useViewer(): ViewerState {
       const url = new URL("/ws", window.location.href);
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
       socket = new WebSocket(url.href);
+      socketRef.current = socket;
       socket.onopen = () => {
         const request: ViewerRequest = { type: "snapshot.request" };
         socket.send(JSON.stringify(request));
@@ -35,10 +62,13 @@ export function useViewer(): ViewerState {
           const response = JSON.parse(data) as ViewerResponse;
           if (response.type === "snapshot") {
             delay = 1_000;
+            liveRef.current = true;
+            permissionsRef.current = response.permissions ?? [];
             setState({
               status: "live",
               sessions: response.sessions,
               events: response.events.map((message) => ({ ...message, receivedAt: Date.now() })),
+              permissions: permissionsRef.current,
             });
           } else if (response.type === "event") {
             const message = { ...response.message, receivedAt: Date.now() };
@@ -49,6 +79,9 @@ export function useViewer(): ViewerState {
                 : previous.sessions;
               return { ...previous, events: [...previous.events, message], sessions };
             });
+          } else if (response.type === "permissions") {
+            permissionsRef.current = response.permissions;
+            setState((previous) => ({ ...previous, permissions: response.permissions }));
           } else if (response.type === "error") {
             setState((previous) => ({ ...previous, error: response.message }));
           }
@@ -59,6 +92,7 @@ export function useViewer(): ViewerState {
       socket.onerror = () => socket.close();
       socket.onclose = () => {
         if (disposed) return;
+        liveRef.current = false;
         setState((previous) => ({ ...previous, status: "reconnecting" }));
         retry = setTimeout(connect, delay);
         delay = Math.min(delay * 2, 10_000);
@@ -68,6 +102,8 @@ export function useViewer(): ViewerState {
     connect();
     return () => {
       disposed = true;
+      liveRef.current = false;
+      socketRef.current = null;
       clearTimeout(retry);
       socket.onopen = null;
       socket.onmessage = null;
@@ -77,5 +113,5 @@ export function useViewer(): ViewerState {
     };
   }, []);
 
-  return state;
+  return { ...state, replyPermission };
 }

@@ -1,11 +1,14 @@
 import { createServer, type Server } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 import type { ViewerMessage, ViewerResponse } from "../shared/viewer-protocol.js";
+import { isPermissionReply } from "../shared/permission-protocol.js";
 import { SessionAnalyzer } from "./analyzer.js";
 import { eventContent } from "./event-content.js";
 import { FileActivityTracker, type PromptActivity } from "./file-activity.js";
 import { serveFrontend } from "./frontend.js";
 import type { LogEvent } from "./log-receiver.js";
+import type { PermissionBroker } from "./permissions.js";
+import { isLoopbackHost } from "./loopback.js";
 
 interface RetainedEvent {
   event: LogEvent;
@@ -19,9 +22,18 @@ export class LogViewer {
   private readonly subscribers = new Set<WebSocket>();
   private readonly sockets = new WebSocketServer({ noServer: true, maxPayload: 16_384 });
   private readonly server: Server;
+  private readonly unsubscribePermissions?: () => void;
 
-  constructor(private readonly analyzer = new SessionAnalyzer()) {
+  constructor(private readonly analyzer = new SessionAnalyzer(), private readonly permissions?: PermissionBroker) {
+    this.unsubscribePermissions = permissions?.subscribe(() => {
+      for (const client of this.subscribers) this.send(client, { type: "permissions", permissions: permissions.list() });
+    });
     this.server = createServer((request, response) => {
+      if (!isLoopbackHost(request.headers.host)) {
+        response.writeHead(403);
+        response.end("Forbidden host");
+        return;
+      }
       if (request.method !== "GET") {
         response.writeHead(405, { Allow: "GET" });
         response.end("Method not allowed");
@@ -39,6 +51,22 @@ export class LogViewer {
       if (pathname === "/api/sessions") {
         response.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
         response.end(JSON.stringify(this.analyzer.getSessions()));
+        return;
+      }
+
+      if (request.method === "GET" && request.url?.split("?", 1)[0] === "/api/tool-executions") {
+        const url = new URL(request.url, "http://localhost");
+        const requestedSession = url.searchParams.get("session");
+        const sessionID = requestedSession || this.analyzer.getSessions()[0]?.sessionID || null;
+        const missing = sessionID !== null && !this.analyzer.getSession(sessionID);
+        response.writeHead(missing ? 404 : 200, {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
+        });
+        response.end(JSON.stringify(missing ? { error: "Session not found" } : {
+          sessionID,
+          executions: sessionID ? this.analyzer.getToolExecutions(sessionID) : [],
+        }));
         return;
       }
 
@@ -75,6 +103,10 @@ export class LogViewer {
       const reject = (status: string) => {
         socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
       };
+      if (!isLoopbackHost(request.headers.host)) {
+        reject("403 Forbidden");
+        return;
+      }
       let pathname: string;
       try {
         pathname = new URL(request.url ?? "/", "http://localhost").pathname;
@@ -112,6 +144,13 @@ export class LogViewer {
       client.on("message", (data, binary) => {
         try {
           const request: unknown = binary ? undefined : JSON.parse(data.toString());
+          if (isPermissionReply(request)) {
+            if (!this.permissions || !this.subscribers.has(client)) throw new Error("Permission bridge unavailable");
+            void this.permissions.reply(request).catch((error: unknown) => {
+              this.send(client, { type: "error", message: error instanceof Error ? error.message : "Permission reply failed" });
+            });
+            return;
+          }
           if (!request || typeof request !== "object" || !("type" in request) || request.type !== "snapshot.request") {
             throw new Error("Invalid request");
           }
@@ -119,10 +158,11 @@ export class LogViewer {
             type: "snapshot",
             sessions: this.analyzer.getSessions(),
             events: this.events.map((entry, index) => this.message(entry, index + 1)),
+            permissions: this.permissions?.list() ?? [],
           });
           this.subscribers.add(client);
         } catch {
-          this.send(client, { type: "error", message: "Expected a snapshot.request JSON message" });
+          this.send(client, { type: "error", message: "Expected a snapshot.request or valid permission.reply JSON message" });
         }
       });
     });
@@ -142,6 +182,7 @@ export class LogViewer {
   }
 
   close(): Promise<void> {
+    this.unsubscribePermissions?.();
     for (const client of this.sockets.clients) client.terminate();
     this.subscribers.clear();
     this.sockets.close();
