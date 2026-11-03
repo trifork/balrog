@@ -255,7 +255,9 @@ totals show observed files, prompts, and successful file operations.
 
 The inspector initially aggregates all prompts in the selected session while the
 heatmap keeps every prompt column visible. Select a prompt candle or a cell to
-filter the inspector and related events. Select the candle again or choose
+filter the inspector and related events. The selected column is outlined, with
+lighter cell backgrounds that preserve heat levels and reverted markers.
+Select the candle again or choose
 **All prompts** to restore the session summary. Candles stack green creations,
 blue edits (including writes), and red deletions in proportion to successful,
 unreverted file-change operations. Height and the number above each candle show

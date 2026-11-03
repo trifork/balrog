@@ -81,6 +81,48 @@ test("defaults to a session aggregate, preserves prompt filters across updates, 
   expect(inspector().getByText("old.ts")).toBeTruthy();
 });
 
+test("highlights the entire selected prompt column across headers, folders and files", async () => {
+  const user = userEvent.setup();
+  const first: PromptActivity = { id: "1", sessionID: "s1", text: "First prompt", files: [
+    { path: "src/app.ts", action: "read", outcome: "success", callID: "read" },
+    { path: "tests/app.test.ts", action: "modified", outcome: "success", callID: "edit" },
+  ] };
+  const second: PromptActivity = { id: "2", sessionID: "s1", text: "Second prompt", files: [
+    { path: "src/new.ts", action: "created", outcome: "success", callID: "create" },
+  ] };
+  const events = [message(1, first), message(2, second)];
+  const { rerender } = render(<FileActivity events={events} sessions={[]} selectedSession="" />);
+  const expectColumn = (column?: number) => {
+    for (const row of matrix().getAllByRole("row")) {
+      expect([...row.querySelectorAll(":scope > [data-selected]")]).toEqual(column === undefined ? [] : [row.children[column + 1]]);
+    }
+  };
+  expectColumn();
+  await user.click(promptButton("01"));
+  expectColumn(0);
+  expect(cell("src/app.ts", "01").getAttribute("data-heat")).toBe("1");
+  expect(cell("src/app.ts", "02").getAttribute("data-heat")).toBe("0");
+  await user.click(promptButton("02"));
+  expectColumn(1);
+  await user.click(matrix().getByRole("button", { name: /tests\//, expanded: true }));
+  expectColumn(1);
+  await user.type(screen.getByRole("searchbox", { name: "Find a file or folder" }), "src/");
+  expectColumn(1);
+  await user.clear(screen.getByRole("searchbox", { name: "Find a file or folder" }));
+  const third: PromptActivity = { id: "3", sessionID: "s1", text: "Third prompt", files: [] };
+  rerender(<FileActivity events={[...events, message(3, third)]} sessions={[]} selectedSession="" />);
+  expectColumn(1);
+  await user.click(cell("src/app.ts", "01"));
+  expectColumn(0);
+  await user.keyboard("{ArrowRight}{Enter}");
+  expectColumn(1);
+  await user.click(screen.getByRole("button", { name: "All prompts" }));
+  expectColumn();
+  await user.click(promptButton("02"));
+  await user.click(promptButton("02"));
+  expectColumn();
+});
+
 test("undo and redo update an older column without changing the session summary or selected filter", async () => {
   const user = userEvent.setup();
   const first: PromptActivity = { id: "1", sessionID: "s1", text: "First prompt", files: [

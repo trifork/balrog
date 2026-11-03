@@ -92,17 +92,17 @@ export function FileHeatmap({ prompts, paths, mode, selectedKey, selectedFile, s
               <colgroup><col className="heatmap-file-column" />{prompts.map((prompt) => <col key={prompt.key} />)}</colgroup>
               <thead><tr>
                 <th scope="col" className="heatmap-corner"><span>Changes per prompt <Icon name="arrow" className="size-3" /></span><small>Observed files</small></th>
-                {prompts.map((prompt, column) => <th key={prompt.key} scope="col">
+                {prompts.map((prompt, column) => <th key={prompt.key} scope="col" data-selected={prompt.key === selectedKey || undefined}>
                   <PromptCandle prompt={prompt} index={column} files={totals[column]} changes={changes[column]} maximum={maximum} selected={prompt.key === selectedKey} hovered={hover?.key === prompt.key} sessionTitle={sessionTitle(prompt.activity.sessionID)} onSelect={(element) => onSelect(prompt.key === selectedKey ? null : prompt.key, null, element)} />
                 </th>)}
               </tr></thead>
               <tbody>{folders.map((folder) => <Fragment key={folder}>
-                <tr className="heatmap-folder"><th colSpan={prompts.length + 1} scope="rowgroup">
+                <tr className="heatmap-folder"><th scope="rowgroup">
                   <button type="button" className="heatmap-folder-toggle" title={folder} aria-expanded={!collapsed.has(folder)} onClick={() => {
                     setCollapsed((previous) => { const next = new Set(previous); next.has(folder) ? next.delete(folder) : next.add(folder); return next; });
                     setHover(null);
                   }}><Icon name="down" className="folder-chevron size-2.5" /><Icon name="folder" className="size-3" /><span>{folder === "/" ? "/" : `${folder}/`}</span><small>{paths.filter((path) => folderName(path) === folder).length}</small></button>
-                </th></tr>
+                </th>{prompts.map((prompt) => <td key={prompt.key} data-selected={prompt.key === selectedKey || undefined} />)}</tr>
                 {!collapsed.has(folder) && paths.filter((path) => folderName(path) === folder).map((path) => <tr key={path} className="heatmap-file" data-selected={path === selectedFile || undefined}>
                   <th scope="row" className="heatmap-file-label"><button type="button" title={path} onClick={(event) => onSelect(selectedKey ?? null, path, event.currentTarget)}><span className="heatmap-file-type">{fileName(path).includes(".") ? fileName(path).split(".").at(-1)?.slice(0, 3).toUpperCase() : "·"}</span><span className="truncate font-mono">{fileName(path)}</span></button></th>
                   {prompts.map((prompt, column) => {
