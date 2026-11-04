@@ -100,7 +100,7 @@ export function collectActivity(events: ViewerMessage[], selectedSession: string
       prompt.fileEventIDs.set(path, ids);
     }
   }
-  return [...retained.values()];
+  return [...retained.values()].filter((prompt) => prompt.activity.text !== "Execution (prompt text unavailable)");
 }
 
 export function aggregateActivity(prompts: ActivityPrompt[]): ActivityPrompt | undefined {
