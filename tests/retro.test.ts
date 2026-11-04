@@ -100,10 +100,9 @@ test("retro assesses the whole conversation in one pass without per-tool model c
   assert.doesNotMatch(template, /\| id \|[^\n]*(?:improvement|complexity|gain)/);
   assert.doesNotMatch(content, /\| id \|[^\n]*(?:improvement|complexity|gain)/);
   assert.doesNotMatch(content, /\b(?:score|scores|scoring)\b|suggested command|alternative command/i);
-  assert.match(content, /Hide `startedAt`, `completedAt`, and `callID` unless the user asks/);
-  assert.match(content, /Assign consecutive numeric IDs starting at 1/);
-  assert.match(content, /Use the displayed `id` values for evidence references/);
-  assert.doesNotMatch(content, /using related call IDs/);
+  assert.match(content, /Hide `startedAt` and `completedAt` unless the user asks/);
+  assert.match(content, /Use the original `callID` values for all call references/);
+  assert.doesNotMatch(content, /Assign consecutive numeric IDs|display IDs|displayed IDs|numeric display ID|calls 2 and 5/);
   assert.match(template, /# Recommendations/);
   assert.match(template, /Complexity:.*gain:.*Validate by/);
   assert.match(content, /`LOW`, `MEDIUM`, or `HIGH`/);

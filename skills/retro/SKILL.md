@@ -84,15 +84,14 @@ recorded run from files inspected in the current revision.
 
 Order by `startedAt` ascending, with missing timestamps last and stable ordering
 for ties. Use that field internally; it does not need to be displayed.
-Hide `startedAt`, `completedAt`, and `callID` unless the user asks for those
+Hide `startedAt` and `completedAt` unless the user asks for those
 fields. When timestamps are requested, use compact UTC times, state the date,
 and retain enough precision to distinguish neighboring calls.
-Assign consecutive numeric IDs starting at 1 after snapshot filtering, helper
-exclusion, and chronological sorting. These display-only IDs are stable within
-this analysis. Retain the mapping to the
-original `callID` internally without changing the source records.
-Use the displayed `id` values for evidence references, such as "calls 2 and 5",
-rather than raw call IDs when detailed evidence is explicitly requested.
+Use the original `callID` values for all call references in assessments,
+evidence, and detailed reports. Copy each ID exactly from the snapshot, without
+renumbering or shortening it, so references match the IDs shown in Balrog.
+For example, write "call call_verify repeated the check" when the referenced
+execution has `callID` equal to `call_verify`.
 Exclude historical `balrog_reportOutcome` helper calls. Exclude an `execute` wrapper only
 when its code clearly performs reporting and no unrelated work. If uncertain,
 include it. Track the number excluded internally. Missing outcomes on reporting-only
@@ -123,7 +122,7 @@ support an assessment, but must be checked against the actual conversation and r
   not establish a purpose.
 - `outcome`: describe the finding, failure, or partial progress supported by that
   call's result. Mark a pending call as pending and an unavailable result as unknown.
-  Later calls can explain its contribution; cite their display IDs and distinguish
+  Later calls can explain its contribution; cite their `callID` values and distinguish
   later confirmation from what this call itself established.
 
 For example, `read({"path":"README.md"})` has capability `Read file` whether its
@@ -145,7 +144,7 @@ grounded in recorded evidence. Reserve the user-facing response for durable reco
   search can be well suited even if a later read rejects that candidate. Assess
   both whether the choice was reasonable from the evidence available then and
   what it ultimately contributed to the completed investigation. Explain later
-  confirmation or rejection using the displayed IDs. Do not penalize exploration
+  confirmation or rejection using the original call IDs. Do not penalize exploration
   solely with hindsight or credit an earlier call with verification done later.
 - Assess provisional findings against the completed snapshot. The working agent
   need not resume or supply explanations. A missing live annotation does not
@@ -169,7 +168,7 @@ same assessment rather than duplicating the skill.
 Apply the same session and snapshot boundaries as the command review. Do not count
 skills activated only to perform this retrospective, including `retro` itself,
 as choices made during the original task. Do not use the reviewer's current skills
-as evidence for an older target session. Cite displayed call IDs for activations
+as evidence for an older target session. Cite original call IDs for activations
 and observed effects; label conversation-only evidence explicitly when no call ID
 exists. Keep skill-use recommendations separate from the call assessments.
 
@@ -210,9 +209,8 @@ AI-instruction improvement. It is not merely another command the agent could run
 Collect each distinct proposal once internally and retain its supporting calls.
 
 Give each proposal a short internal ID, identify concrete paths or instruction sections
-when verified, and retain supporting call IDs in its evidence, such as
-"calls 2 and 5", together with the observed pattern. Include original Balrog
-`callID` values only when the user requests them. For validation, describe a
+when verified, and retain supporting `callID` values in its evidence together
+with the observed pattern. For validation, describe a
 concrete follow-up task or check that would support or refute the expected gain.
 It is a validation plan, not a claim that the check has run. If no higher-level
 proposal is justified, say so instead of manufacturing one.
@@ -273,7 +271,7 @@ Set `Content-Type: application/json` and send this body:
 }
 ```
 
-Include one entry per included call, mapped to its original `callID`, not its numeric display ID.
+Include one entry per included call, identified by its original `callID`.
 Send the redacted assessments prepared internally.
 Keep `unknown` and pending assessments explicit as non-empty strings.
 Omit excluded helpers and calls outside the snapshot. Skip publication when no calls remain.
