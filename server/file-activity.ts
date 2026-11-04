@@ -124,8 +124,13 @@ export class FileActivityTracker {
   private readonly roots = new Map<string, string>();
   private updates: PromptActivity[] = [];
 
+  getWorkspaceRoot(pluginID: string, root?: string): string | undefined {
+    const directory = root ?? this.roots.get(pluginID);
+    return directory ? normalizePath(directory) : undefined;
+  }
+
   normalizeFilePath(value: string, pluginID: string, root?: string): string {
-    return normalizePath(value, root ?? this.roots.get(pluginID));
+    return normalizePath(value, this.getWorkspaceRoot(pluginID, root));
   }
 
   processAll(event: LogEvent): PromptActivity[] {

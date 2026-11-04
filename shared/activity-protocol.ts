@@ -14,6 +14,7 @@ export interface ActivityBase {
   source: ActivitySource;
   startEventID: number;
   eventIDs: number[];
+  workspaceRoot?: string;
   rationale?: { text: string; source: "rationale" | "description" };
 }
 

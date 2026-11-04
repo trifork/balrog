@@ -4,7 +4,7 @@ import type { PromptActivity } from "../../server/file-activity";
 import type { LogEvent } from "../../server/log-receiver";
 import type { ViewerMessage } from "../../shared/viewer-protocol";
 import type { FileGrepActivity, SessionActivity } from "../../shared/activity-protocol";
-import { actionBadges, actionLabel, aggregateActivity, changeBreakdown, collectActivity, collectHeatmapActivity, operationCount } from "./file-activity-model";
+import { actionBadges, actionLabel, aggregateActivity, changeBreakdown, collectActivity, collectHeatmapActivity, fileActivityRows, fileWorkspace, groupWorkspacePaths, operationCount } from "./file-activity-model";
 
 let activityUpdates: ReturnType<typeof createActivityUpdates>;
 beforeEach(() => { activityUpdates = createActivityUpdates(); });
@@ -12,6 +12,88 @@ beforeEach(() => { activityUpdates = createActivityUpdates(); });
 const message = (id: number, activity: PromptActivity, ...updates: PromptActivity[]): ViewerMessage => ({
   id, event: { tag: "session.prompt", pluginID: "test", sessionID: activity.sessionID } as unknown as LogEvent,
   activityUpdates: activityUpdates(id, activity, ...updates),
+});
+
+test("classifies normalized file paths against their recorded workspace without guessing missing roots", () => {
+  for (const [path, root, expected] of [
+    ["src/app.ts", "/workspace", "workspace"],
+    ["README.md", undefined, "workspace"],
+    ["/workspace/src/app.ts", "/workspace", "workspace"],
+    ["/workspace-other/app.ts", "/workspace", "outside"],
+    ["../shared/app.ts", "/workspace", "outside"],
+    ["..", "/workspace", "outside"],
+    ["/etc/config", "/workspace", "outside"],
+    ["/unknown/app.ts", undefined, "unknown"],
+    ["/etc/config", "/", "workspace"],
+    ["C:/repo/src/app.ts", "C:\\repo", "workspace"],
+    ["C:/repo-other/app.ts", "C:\\repo", "outside"],
+    ["D:/repo/app.ts", "C:/repo", "outside"],
+    ["C:/repo/app.ts", undefined, "unknown"],
+    ["C:app.ts", "C:/repo", "unknown"],
+  ] as const) expect(fileWorkspace(path, root)).toBe(expected);
+});
+
+test("workspace groups preserve canonical context for reads, changes, grep matches and historical playback", () => {
+  const initial = activityUpdates(1, { id: "1", sessionID: "s1", text: "Read workspace files", files: [
+    { path: "src/app.ts", action: "read", outcome: "success", callID: "read" },
+    { path: "/etc/config", action: "modified", outcome: "success", callID: "edit" },
+  ] });
+  initial.items = initial.items.map((item) => ({ ...item, workspaceRoot: "/workspace" }));
+  const grep: FileGrepActivity = {
+    id: "grep", promptID: initial.items[0].id, kind: "file.grep", status: "completed", workspaceRoot: "/workspace",
+    timestamp: 2, timestampSource: "recorded", startEventID: 2, eventIDs: [2],
+    source: { tag: "session.tool.called", pluginID: "test", callID: "grep" },
+    pattern: "needle", matchedFiles: ["src/matched.ts", "../shared/helper.ts"],
+  };
+  const first: ViewerMessage = {
+    id: 1, event: { tag: "session.prompt", sessionID: "s1", pluginID: "test" } as unknown as LogEvent,
+    activityUpdates: initial,
+  };
+  const second: ViewerMessage = { ...first, id: 2, activityUpdates: { sessionID: "s1", items: [grep] } };
+  const before = collectActivity([first], "s1");
+  const after = collectActivity([first, second], "s1");
+  expect(groupWorkspacePaths(before, ["src/app.ts", "/etc/config"]).map((group) => [group.label, group.paths])).toEqual([
+    ["Outside workspace", ["/etc/config"]], ["In workspace", ["src/app.ts"]],
+  ]);
+  expect(groupWorkspacePaths(after, ["../shared/helper.ts", "/etc/config", "src/app.ts", "src/matched.ts"]).map((group) => [group.label, group.paths])).toEqual([
+    ["Outside workspace", ["../shared/helper.ts", "/etc/config"]], ["In workspace", ["src/app.ts", "src/matched.ts"]],
+  ]);
+  expect(aggregateActivity(after)!.fileWorkspaces.get("../shared/helper.ts")).toBe("outside");
+  expect(groupWorkspacePaths(after, ["src/matched.ts"]).map((group) => group.label)).toEqual(["In workspace"]);
+});
+
+test("workspace rows form a nested directory tree with stable collapse keys and descendant counts", () => {
+  const paths = ["README.md", "src/app.ts", "src/features/auth/login.ts", "src/features/cart.ts", "tests/app.test.ts"];
+  const rows = fileActivityRows(paths, "workspace", new Set());
+  expect(rows.map((row) => [row.kind, row.path, row.depth])).toEqual([
+    ["folder", "src", 0], ["folder", "src/features", 1], ["folder", "src/features/auth", 2],
+    ["file", "src/features/auth/login.ts", 3], ["file", "src/features/cart.ts", 2], ["file", "src/app.ts", 1],
+    ["folder", "tests", 0], ["file", "tests/app.test.ts", 1], ["file", "README.md", 0],
+  ]);
+  expect(rows.flatMap((row) => row.kind === "folder" ? [[row.label, row.count]] : [])).toEqual([
+    ["src/", 3], ["features/", 2], ["auth/", 1], ["tests/", 1],
+  ]);
+  const folder = rows.find((row) => row.kind === "folder" && row.path === "src/features");
+  expect(folder?.kind).toBe("folder");
+  if (folder?.kind !== "folder") throw new Error("Missing features directory");
+  const collapsed = fileActivityRows(paths, "workspace", new Set([folder.key]));
+  expect(collapsed.map((row) => row.path)).toEqual(["src", "src/features", "src/app.ts", "tests", "tests/app.test.ts", "README.md"]);
+  const external = fileActivityRows(["../shared/auth/login.ts"], "outside", new Set());
+  expect(external[0]).toMatchObject({ kind: "folder", label: "../shared/auth/", depth: 0 });
+});
+
+test("unknown and conflicting workspace contexts stay explicit across sessions", () => {
+  const fixture = (sessionID: string, workspaceRoot?: string): SessionActivity => {
+    const update = activityUpdates(1, { id: "1", sessionID, text: "Read a file", files: [
+      { path: "/shared/app.ts", action: "read", outcome: "success", callID: "read" },
+    ] });
+    return { schemaVersion: 2, sessionID, items: update.items.map((item) => ({ ...item, workspaceRoot })) };
+  };
+  const unknown = collectHeatmapActivity([fixture("unknown")], "");
+  expect(groupWorkspacePaths(unknown, ["/shared/app.ts"])[0].label).toBe("Workspace unknown");
+  const mixed = collectHeatmapActivity([fixture("inside", "/shared"), fixture("outside", "/workspace")], "");
+  expect(groupWorkspacePaths(mixed, ["/shared/app.ts"])[0].label).toBe("Workspace unknown");
+  expect(groupWorkspacePaths(collectHeatmapActivity([fixture("outside", "/workspace")], "outside"), ["/shared/app.ts"])[0].label).toBe("Outside workspace");
 });
 
 test("grep matched files count as reads without inflating changes or repeated matches", () => {

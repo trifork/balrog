@@ -32,7 +32,58 @@ test("grep matches use the same normalized paths as explicit reads and changes",
   if (grep.kind === "file.grep") {
     assert.deepEqual(grep.matchedFiles, ["src/app.ts", "src/other.ts"]);
     assert.equal(grep.status, "completed");
+    assert.equal(grep.workspaceRoot, "/workspace");
   }
+});
+
+test("canonical operations retain the workspace used for path normalization", () => {
+  const analyzer = new SessionAnalyzer();
+  analyzer.process({
+    tag: "initialize", sessionID: null, pluginID: "plugin-1",
+    initialize: { context: { location: { directory: "/workspace" } } },
+  } as unknown as LogEvent);
+  for (const [id, path] of [["inside", "/workspace/src/app.ts"], ["outside", "/workspace-other/config.ts"], ["parent", "../shared/helper.ts"]]) {
+    call(analyzer, "read", id, { path });
+    const completion = event("session.tool.success", { id });
+    analyzer.process(completion);
+    const update = analyzer.getActivityUpdates(completion);
+    assert.ok(update);
+    assert.ok(update.items.filter((item) => item.kind === "file.read").every((item) => item.workspaceRoot === "/workspace"));
+  }
+  const items = analyzer.getSessionActivity("session-1")!.items.filter((item) => item.kind === "file.read");
+  assert.deepEqual(items.map((item) => item.kind === "file.read" && item.path), [
+    "src/app.ts", "/workspace-other/config.ts", "../shared/helper.ts",
+  ]);
+  assert.ok(items.every((item) => item.workspaceRoot === "/workspace"));
+  analyzer.process({
+    tag: "initialize", sessionID: null, pluginID: "plugin-1",
+    initialize: { context: { directory: "/other-workspace" } },
+  } as unknown as LogEvent);
+  assert.deepEqual(analyzer.getSessionActivity("session-1")!.items.filter((item) => item.kind === "file.read"), items);
+});
+
+test("native call locations survive split tool events and can complete missing workspace context", () => {
+  const analyzer = new SessionAnalyzer();
+  const located = (tag: string, data: object, directory: string): LogEvent => ({
+    tag, sessionID: "session-1", pluginID: "plugin-1",
+    [tag]: { type: tag, location: { directory }, data: { sessionID: "session-1", ...data } },
+  } as unknown as LogEvent);
+  analyzer.process(located("session.tool.input.started", { id: "grep", name: "grep" }, "C:\\repo"));
+  analyzer.process(event("session.tool.called", { id: "grep", input: { path: "C:/repo/src", pattern: "needle" } }));
+  analyzer.process(event("session.tool.success", { id: "grep", content: [{
+    type: "text", text: "Found 2 matches\nC:/repo/src/app.ts:\n  Line 1: needle\nD:/shared/app.ts:\n  Line 2: needle",
+  }] }));
+  const grep = analyzer.getSessionActivity("session-1")!.items.find((item) => item.kind === "file.grep");
+  assert.ok(grep?.kind === "file.grep");
+  assert.equal(grep.workspaceRoot, "C:/repo");
+  assert.deepEqual(grep.matchedFiles, ["src/app.ts", "D:/shared/app.ts"]);
+  call(analyzer, "read", "late-context", { path: "/etc/config" });
+  const pending = analyzer.getSessionActivity("session-1")!.items.find((item) => item.source.callID === "late-context");
+  assert.equal(pending?.workspaceRoot, undefined);
+  analyzer.process(located("session.tool.success", { id: "late-context" }, "/workspace"));
+  const completed = analyzer.getSessionActivity("session-1")!.items.find((item) => item.id === pending?.id);
+  assert.equal(completed?.workspaceRoot, "/workspace");
+  assert.equal(pending?.workspaceRoot, undefined, "later context must not mutate historical pending activity");
 });
 
 test("activity correlates V2 tool names, calls and results with source timestamps", () => {

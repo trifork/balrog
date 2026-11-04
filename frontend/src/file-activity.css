@@ -159,12 +159,16 @@
     color: var(--color-ink);
   }
   .activity-body {
+    --inspector-width: 294px;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 294px;
+    grid-template-columns: minmax(0, 1fr);
     gap: 16px;
     flex: 1;
     min-height: 200px;
     min-width: 0;
+  }
+  .activity-body[data-inspector-open] {
+    grid-template-columns: minmax(0, 1fr) var(--inspector-width);
   }
   .activity-eyebrow {
     display: inline;
@@ -190,71 +194,30 @@
   .activity-map-heading {
     display: flex;
     flex-shrink: 0;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 6px 12px;
     min-height: 45px;
-    padding: 0 17px;
+    padding: 10px 17px;
     border-bottom: 1px solid var(--color-line);
+  }
+  .activity-map-heading > div {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    white-space: nowrap;
   }
   .activity-map-heading h2 {
     color: #c3beb4;
   }
   .activity-map-size {
-    margin-left: 10px;
     font-size: 10px;
     color: var(--activity-quiet);
   }
-  .activity-timeline {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 10px;
-    color: var(--color-muted);
-    white-space: nowrap;
-  }
-  .heatmap-filter-guide {
-    display: flex;
-    flex-shrink: 0;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 8px 16px;
-    padding: 10px 17px;
-    border-bottom: 1px solid #ffffff05;
-    color: var(--color-muted);
-    font-size: 10px;
-  }
-  .heatmap-change-key,
-  .heatmap-change-key > span {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-  .heatmap-change-key {
-    gap: 12px;
-    font-size: 9px;
-  }
-  .heatmap-change-key i {
-    width: 7px;
-    height: 7px;
-    border-radius: 2px;
-  }
-  .heatmap-change-key [data-change="created"],
-  .heatmap-candle [data-change="created"] {
-    background: #8acba4;
-  }
-  .heatmap-change-key [data-change="edited"],
-  .heatmap-candle [data-change="edited"] {
-    background: #8eafe0;
-  }
-  .heatmap-change-key [data-change="deleted"],
-  .heatmap-candle [data-change="deleted"] {
-    background: #e68d8d;
-  }
   .heatmap-scroll {
     --file-width: 220px;
-    --cell-width: 36px;
+    --cell-width: 64px;
     overflow: auto;
     flex: 1;
     min-width: 0;
@@ -270,128 +233,78 @@
     );
     border-collapse: separate;
     border-spacing: 0;
-    table-layout: fixed;
+    table-layout: auto;
   }
   .heatmap-file-column {
     width: var(--file-width);
+  }
+  .heatmap-scroll[data-file-column-pinned] :is(.heatmap-scope th:not(.heatmap-prompt-title), .heatmap-folder th, .heatmap-file-label) {
+    left: 0;
   }
   .heatmap th,
   .heatmap td {
     padding: 0;
     font-weight: 400;
   }
-  .heatmap thead th {
+  .heatmap-scope th {
+    position: sticky;
+    z-index: 2;
+    background: var(--color-panel);
+    text-align: left;
+  }
+  .heatmap-scope[data-prompt-headings] > th {
     position: sticky;
     top: 0;
     z-index: 3;
-    height: 89px;
-    vertical-align: bottom;
-    border-bottom: 1px solid #ffffff05;
-    background: var(--color-panel);
   }
-  .heatmap thead .heatmap-corner {
+  .heatmap-scope[data-prompt-headings] > th:first-child {
     z-index: 5;
-    left: 0;
-    padding: 0px 17px 0;
-    text-align: left;
-    vertical-align: middle;
   }
-  .heatmap-corner > span {
+  .heatmap .heatmap-prompt-title {
+    min-width: var(--cell-width);
+    padding: 6px;
+    color: var(--activity-quiet);
+    text-align: center;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+  .heatmap-scope th,
+  .heatmap-scope td {
+    border-top: 1px solid var(--color-line);
+  }
+  .heatmap-scope-label {
     display: flex;
     align-items: center;
-    gap: 7px;
-    color: var(--color-muted);
+    gap: 8px;
+    padding: 12px 16px 8px;
+    color: #c3beb4;
     font-size: 10px;
-  }
-  .heatmap-corner small {
-    display: block;
-    margin-top: 25px;
-    color: var(--activity-quiet);
-    font-size: 9px;
-    letter-spacing: 1px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
     text-transform: uppercase;
+    white-space: nowrap;
   }
-  .heatmap-prompt {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 5px;
-    width: 100%;
-    height: 93px;
-    padding: 8px 0 0;
-    border: 0;
-    border-radius: 4px 4px 0 0;
-    background: transparent;
+  .heatmap-scope-label small {
     color: var(--activity-quiet);
-    font-size: 10px;
-  }
-  .heatmap-prompt:hover,
-  .heatmap-prompt[data-hovered] {
-    background: #ffffff05;
-    color: var(--color-ink);
-  }
-  .heatmap-prompt[aria-pressed="true"] {
-    background: #ffac7812;
-    color: var(--color-accent);
-    outline: 1px solid #ffac7870;
-    outline-offset: -2px;
-    box-shadow: inset 0 -2px var(--color-accent);
-  }
-  .heatmap-total {
     font-size: 9px;
-    font-variant-numeric: tabular-nums;
-  }
-  .heatmap-prompt-number {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-  }
-  .heatmap-prompt-number svg {
-    opacity: 0.5;
-  }
-  .heatmap-prompt:hover .heatmap-prompt-number svg,
-  .heatmap-prompt[aria-pressed="true"] .heatmap-prompt-number svg {
-    opacity: 1;
-  }
-  .heatmap-bar-track {
-    display: flex;
-    align-items: flex-end;
-    height: 35px;
-    width: 13px;
-  }
-  .heatmap-candle {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    min-height: 2px;
-    overflow: hidden;
-    border-radius: 2px 2px 0 0;
-    box-shadow: 0 0 0 1px #ffffff10;
-  }
-  .heatmap-candle > span {
-    flex-shrink: 0;
-    width: 100%;
-  }
-  .heatmap-candle[data-empty] {
-    background: #575853;
-    box-shadow: none;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
   }
   .heatmap-folder th {
     position: sticky;
-    left: 0;
     z-index: 2;
     height: 34px;
     background: var(--color-panel);
     text-align: left;
   }
   .heatmap-folder-toggle {
-    position: sticky;
-    left: 0;
     display: flex;
     align-items: center;
     gap: 7px;
-    width: var(--file-width);
-    padding: 9px 16px 6px;
+    width: max-content;
+    min-width: var(--file-width);
+    padding: 9px 16px 6px calc(16px + var(--tree-depth, 0) * 16px);
     border: 0;
     border-radius: 0;
     background: var(--color-panel);
@@ -404,12 +317,11 @@
     color: var(--color-ink);
   }
   .heatmap-folder-toggle > span {
-    overflow: hidden;
-    text-overflow: ellipsis;
     white-space: nowrap;
   }
   .heatmap-folder-toggle svg,
   .heatmap-folder-toggle small {
+    flex-shrink: 0;
     color: var(--activity-quiet);
   }
   .heatmap-folder-toggle small {
@@ -423,7 +335,6 @@
   }
   .heatmap-file-label {
     position: sticky;
-    left: 0;
     z-index: 2;
     background: var(--color-panel);
   }
@@ -432,14 +343,18 @@
     align-items: center;
     gap: 8px;
     width: 100%;
+    min-width: max-content;
     height: 31px;
-    padding: 0 12px 0 35px;
+    padding: 0 12px 0 calc(16px + var(--tree-depth, 1) * 16px);
     border: 0;
     border-radius: 0;
     background: transparent;
     text-align: left;
     color: #b3b2ac;
     font-size: 11px;
+  }
+  .heatmap-file-name {
+    white-space: nowrap;
   }
   .heatmap-file-label button:hover,
   .heatmap-file:hover .heatmap-file-label button {
@@ -458,6 +373,7 @@
     color: var(--color-accent);
   }
   .heatmap td {
+    min-width: var(--cell-width);
     padding: 3px;
   }
   .heatmap th[data-selected],
@@ -1111,7 +1027,7 @@
   }
   @media (min-width: 1600px) {
     .activity-body {
-      grid-template-columns: minmax(0, 1fr) 320px;
+      --inspector-width: 320px;
     }
     .activity-workspace {
       padding-right: 36px;
@@ -1127,7 +1043,7 @@
   }
   @media (max-width: 1180px) {
     .activity-body {
-      grid-template-columns: minmax(0, 1fr) 265px;
+      --inspector-width: 265px;
       gap: 12px;
     }
     .activity-workspace {
@@ -1136,9 +1052,6 @@
     .activity-trace {
       right: 20px;
       left: 20px;
-    }
-    .activity-map-size {
-      display: none;
     }
     .heatmap-markers {
       gap: 7px;
@@ -1256,14 +1169,7 @@
       font-size: 10px;
     }
     .activity-map-heading {
-      padding: 0 12px;
-    }
-    .heatmap-filter-guide {
-      padding: 9px 12px;
-      font-size: 9px;
-    }
-    .activity-timeline {
-      font-size: 9px;
+      padding: 10px 12px;
     }
     .heatmap-legend {
       padding: 10px 12px;

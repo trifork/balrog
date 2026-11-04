@@ -261,19 +261,37 @@ paths, collapse folders, and switch between **All activity**, **Reads**, and
 **Changes**. Cell intensity counts successful file operations on a fixed scale
 (0, 1, 2–3, 4–7, 8+). The session
 totals show observed files, prompts, and successful file operations.
+The left-hand observed-files column expands to show folder paths and file names
+on a single line without truncation. Scroll the map horizontally when needed.
+The file column stays pinned when space permits; on narrower maps it scrolls
+with the prompt columns so long paths cannot obscure them.
+Observed files show **Outside workspace** first, followed by **In workspace**.
+Workspace files form an indented folder tree: expand or collapse any directory
+to show or hide its descendants. External files retain full folder-path groups.
+Both sections include file counts. The boundary comes from the
+agent's recorded workspace directory, not the machine running the viewer.
+Relative paths that escape through `../` are outside the workspace. Absolute
+paths without a recorded workspace root, or paths with conflicting workspace
+contexts across sessions, appear under **Workspace unknown** instead of guessing.
+Grouping uses recorded paths; it does not inspect the filesystem or resolve symlinks.
+Reads, grep matches, and changes use the same grouping in live and historical
+views. Search narrows both sections and hides empty sections.
 
-The inspector initially aggregates all prompts in the selected session while the
-heatmap keeps every prompt column visible. Select a prompt candle or a cell to
-filter the inspector and related events. The selected column is outlined, with
+The right-side inspector is hidden by default, leaving the full width for the
+heatmap. Select a cell to open the inspector for its file and
+that prompt and filter related events. Clicking a file name alone does not open
+the inspector without a selected prompt. The selected column is outlined, with
 lighter cell backgrounds that preserve heat levels and reverted markers.
-Select the candle again or choose
-**All prompts** to restore the session summary. Candles stack green creations,
-blue edits (including writes), and red deletions in proportion to successful,
-unreverted file-change operations. Height and the number above each candle show
-change volume; hover for counts and percentages. Reads, pending and failed
-attempts, and reverted actions do not contribute to these proportions. Prompts
-with no confirmed changes retain a neutral, clickable candle. Late tool outcomes
-and undo/redo updates refresh their original columns without moving the selection.
+Choose **All prompts** to close the inspector and restore the session overview.
+Switching sessions also clears the prompt selection and closes the inspector.
+The map has no candle-selector row. Each column has a plain **Prompt 1**,
+**Prompt 2**, etc. heading that stays visible while scrolling; hover the heading
+for the recorded prompt text. Titles share the top file-group row rather than
+adding a separate header row. Select a cell, not a heading, to open details.
+File/prompt counts stay beside the Activity map title at all screen sizes.
+File groups remain visible. Late tool
+outcomes and undo/redo updates refresh their original columns without moving the
+selection.
 Arrow keys move between cells, and Enter or Space selects one. On mobile, the
 inspector opens as a dismissible bottom sheet.
 
@@ -281,7 +299,7 @@ inspector opens as a dismissible bottom sheet.
 Each matched file contributes one read operation per grep call, regardless of
 how many matching lines it contains. These files also appear in **All activity**,
 with a **Grep match** badge distinct from a full-file **Read**. Grep matches never
-contribute to **Changes**, confirmed-change counts, or change candles. Pending or
+contribute to **Changes** or confirmed-change counts. Pending or
 failed searches, empty results, and unmatched files under the search scope do not
 create file rows. Matched paths use the same normalization as explicit file
 operations so activity on the same file is combined.
@@ -475,6 +493,9 @@ ID as `source.callID`; `source.pluginID`, optional `source.eventID`, and optiona
 `source.messageID` identify the recorded evidence. `startEventID` and `eventIDs`
 reference numeric IDs in the viewer's retained trace; they are not SQLite row IDs
 and can change if the trace is filtered or reordered.
+Optional `workspaceRoot` records the normalized workspace directory used for file
+path normalization. It is included in both transports and retained in historical
+deltas; older recordings without workspace context may omit it.
 
 Prompts have `phase: "queued" | "active"`. Queue admission records a prompt, but
 delivery or an observed execution determines its Activity map column and playback

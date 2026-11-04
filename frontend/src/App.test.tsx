@@ -470,7 +470,7 @@ test("scrubbing reconstructs historical heatmap snapshots and Go live restores l
   expect(cell("app").getAttribute("data-pending")).toBe("true");
   expect(cell("app").hasAttribute("data-reverted")).toBe(false);
   expect(cell("failed").hasAttribute("data-failed")).toBe(false);
-  await user.click(heatmap().getByRole("button", { name: /^Prompt 01:/ }));
+  await user.click(cell("app"));
   expect(cell("app").getAttribute("data-pending")).toBe("true");
   expect(screen.getByRole("button", { name: "Resume live playback" })).toBeTruthy();
   fireEvent.keyDown(slider, { key: "ArrowRight" });
@@ -491,7 +491,7 @@ test("scrubbing reconstructs historical heatmap snapshots and Go live restores l
   rerender(<App />);
   expect(cell("app").getAttribute("data-heat")).toBe("1");
   expect(heatmap().queryByText("later.ts")).toBeNull();
-  expect(heatmap().queryByRole("button", { name: /^Prompt 02:/ })).toBeNull();
+  expect(heatmap().queryByRole("columnheader", { name: /^Prompt 2:/ })).toBeNull();
   expect(screen.queryByRole("region", { name: "Session events" })).toBeNull();
   await user.click(screen.getByRole("button", { name: "All prompts" }));
   expect(cell("app").getAttribute("data-heat")).toBe("1");
@@ -499,7 +499,7 @@ test("scrubbing reconstructs historical heatmap snapshots and Go live restores l
   await user.click(screen.getByRole("button", { name: "Resume live playback" }));
   expect(cell("app").getAttribute("data-reverted")).toBe("true");
   expect(heatmap().getByText("later.ts")).toBeTruthy();
-  expect(heatmap().getByRole("button", { name: /^Prompt 02:/ })).toBeTruthy();
+  expect(heatmap().getByRole("columnheader", { name: /^Prompt 2:/ })).toBeTruthy();
   expect(screen.queryByRole("region", { name: "Session events" })).toBeNull();
 });
 
@@ -516,6 +516,7 @@ test("timeline follows the session without inheriting related-event filters or h
   render(<App />);
   await user.click(screen.getByRole("tab", { name: /First session/ }));
   expect(screen.getByRole("slider", { name: "Scrub to event" }).getAttribute("aria-valuemax")).toBe("2");
+  await user.click(screen.getByRole("button", { name: /^src\/file.ts, prompt 01:/ }));
   await user.click(screen.getByRole("button", { name: "Inspect 1 related events" }));
   expect(cards()).toHaveLength(1);
   expect(screen.getByRole("slider", { name: "Scrub to event" }).getAttribute("aria-valuemax")).toBe("2");
@@ -553,8 +554,12 @@ test("timeline remains stable when a related file has no events in the next prom
 test("heatmap prompt navigation centers the timeline while preserving live playback", async () => {
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(400);
   const user = userEvent.setup();
-  const first = { id: "1", sessionID: "s1", text: "First prompt", files: [] };
-  const second = { id: "2", sessionID: "s1", text: "Second prompt", files: [] };
+  const first: PromptActivity = { id: "1", sessionID: "s1", text: "First prompt", files: [
+    { path: "app.ts", action: "read", outcome: "success", callID: "read-1" },
+  ] };
+  const second: PromptActivity = { id: "2", sessionID: "s1", text: "Second prompt", files: [
+    { path: "app.ts", action: "read", outcome: "success", callID: "read-2" },
+  ] };
   state.events = [
     { ...message(1, "session.inbox.delivered", "s1"), activityUpdates: activityUpdates(1, first) },
     { ...message(2, "session.tool.success", "s1"), activityUpdates: activityUpdates(2, first) },
@@ -566,7 +571,8 @@ test("heatmap prompt navigation centers the timeline while preserving live playb
   await openEvents(user);
   expect(cards()).toHaveLength(4);
   const heatmap = within(screen.getByRole("table", { name: "File operations by prompt" }));
-  await user.click(heatmap.getByRole("button", { name: /^Prompt 02:/ }));
+  await user.click(heatmap.getByRole("button", { name: /^app.ts, prompt 02:/ }));
+  await user.click(screen.getByRole("button", { name: "Show all files for this prompt" }));
   expect(cards()).toHaveLength(2);
   expect(slider.getAttribute("aria-valuenow")).toBe("2");
   expect(Number.parseFloat(slider.style.left) - slider.parentElement!.parentElement!.scrollLeft).toBe(200);

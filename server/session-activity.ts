@@ -54,11 +54,13 @@ export class SessionActivityAnalyzer {
     const callID = text(data["callID"]) ?? text(data["toolCallID"]) ?? text(data["id"]) ?? text(input?.["callID"]);
     const callKey = JSON.stringify([scope, callID]);
     const messageID = text(data["assistantMessageID"]) ?? text(data["messageID"]);
+    const workspaceRoot = this.tracker.getWorkspaceRoot(pluginID, text(asObject(native?.["location"])?.["directory"]));
     const base: ActivityBase = {
       id: eventID ?? JSON.stringify([pluginID, sessionID, "event", eventReference]),
       timestamp: meta.timestamp, timestampSource: meta.timestampSource,
       source: { tag, pluginID, eventID, messageID },
       startEventID: eventReference, eventIDs: [eventReference],
+      ...(workspaceRoot ? { workspaceRoot } : {}),
     };
     const items = new Map(this.heatmaps.find((entry) => entry.sessionID === sessionID)?.items.map((item) => [item.id, item]));
     const changed = new Map<string, SessionActivityItem>();
@@ -90,11 +92,14 @@ export class SessionActivityAnalyzer {
       }
       call.eventIDs.push(eventReference);
       call.root = text(asObject(native?.["location"])?.["directory"]) ?? call.root;
+      const callWorkspaceRoot = this.tracker.getWorkspaceRoot(pluginID, call.root);
+      if (callWorkspaceRoot && !call.base.workspaceRoot) call.base = { ...call.base, workspaceRoot: callWorkspaceRoot };
       call.tool = text(data["name"]) ?? text(data["tool"]) ?? text(input?.["tool"]) ?? call.tool;
       if (before) {
         call.input = asObject(data["input"]) ?? asObject(asObject(payload?.["output"])?.["args"]) ?? asObject(input?.["args"]) ?? {};
         call.base = {
           ...base,
+          ...(callWorkspaceRoot ? { workspaceRoot: callWorkspaceRoot } : {}),
           source: { ...base.source, callID, tool: call.tool, messageID: messageID ?? call.base.source.messageID },
         };
         const rationale = text(call.input["rationale"]) ?? text(call.input["description"]);
@@ -192,8 +197,10 @@ export class SessionActivityAnalyzer {
       ])];
       if (!changed && previous && eventIDs.length === previous.eventIDs.length) continue;
       const base = previous ?? call?.base ?? prompt;
+      const workspaceRoot = base.workspaceRoot ?? call?.base.workspaceRoot;
       const operation = {
         ...base, id, promptID: prompt.id, path: touch.path, eventIDs,
+        ...(workspaceRoot ? { workspaceRoot } : {}),
         source: { ...base.source, callID: touch.callID },
         status: touch.outcome === "success" ? "completed" as const : touch.outcome === "failed" ? "failed" as const : "pending" as const,
       };

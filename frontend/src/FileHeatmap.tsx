@@ -1,8 +1,7 @@
-import { Fragment, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import type { FileTouch } from "../../server/file-activity";
 import { Icon } from "./Icon";
-import { changeBreakdown, fileName, folderName, heatLevel, matchesMode, metricLabel, operationCount, promptNumber, type ActivityMode, type ActivityPrompt } from "./file-activity-model";
-import { PromptCandle } from "./PromptCandle";
+import { fileActivityRows, fileName, groupWorkspacePaths, heatLevel, matchesMode, metricLabel, operationCount, promptNumber, type ActivityMode, type ActivityPrompt } from "./file-activity-model";
 import { FileActivityTooltip } from "./FileActivityTooltip";
 
 interface Props {
@@ -21,13 +20,13 @@ export function FileHeatmap({ prompts, paths, mode, selectedKey, selectedFile, s
   const [collapsed, setCollapsed] = useState(new Set<string>());
   const [hover, setHover] = useState<{ path: string; key: string; rect: DOMRect } | null>(null);
   const [focused, setFocused] = useState<{ path: string; key: string } | null>(null);
+  const [fileColumnPinned, setFileColumnPinned] = useState(true);
   const scroll = useRef<HTMLDivElement>(null);
   const table = useRef<HTMLTableElement>(null);
-  const folders = [...new Set(paths.map(folderName))];
-  const visiblePaths = paths.filter((path) => !collapsed.has(folderName(path)));
-  const totals = prompts.map((prompt) => paths.filter((path) => operationCount(prompt.files.get(path) ?? noTouches, mode) > 0).length);
-  const changes = prompts.map((prompt) => changeBreakdown(paths.flatMap((path) => prompt.files.get(path) ?? noTouches)));
-  const maximum = Math.max(1, ...changes.map((change) => change.total));
+  const groups = groupWorkspacePaths(prompts, paths).map((group) => ({
+    ...group, rows: fileActivityRows(group.paths, group.workspace, collapsed),
+  }));
+  const visiblePaths = groups.flatMap((group) => group.rows.flatMap((row) => row.kind === "file" ? [row.path] : []));
   const selectedIndex = prompts.findIndex((prompt) => prompt.key === selectedKey);
   const tabStop = focused && visiblePaths.includes(focused.path) && prompts.some((prompt) => prompt.key === focused.key)
     ? focused : { path: visiblePaths.includes(selectedFile ?? "") ? selectedFile : visiblePaths[0], key: selectedKey ?? prompts.at(-1)?.key };
@@ -36,21 +35,36 @@ export function FileHeatmap({ prompts, paths, mode, selectedKey, selectedFile, s
     if (!scroll.current || !table.current) return;
     const bounds = scroll.current.getBoundingClientRect();
     const rect = element.getBoundingClientRect();
-    const labelWidth = table.current.querySelector("th")?.getBoundingClientRect().width ?? 220;
+    const labelWidth = fileColumnPinned ? table.current.querySelector("tbody th")?.getBoundingClientRect().width ?? 220 : 0;
     if (rect.right > bounds.right - 16) scroll.current.scrollLeft += rect.right - bounds.right + 24;
     if (rect.left < bounds.left + labelWidth) scroll.current.scrollLeft -= bounds.left + labelWidth - rect.left + 12;
     if (vertically) {
-      const headerHeight = table.current.tHead?.getBoundingClientRect().height ?? 98;
+      const headerHeight = table.current.querySelector(".heatmap-scope[data-prompt-headings]")?.getBoundingClientRect().height ?? 0;
       if (rect.bottom > bounds.bottom - 12) scroll.current.scrollTop += rect.bottom - bounds.bottom + 20;
       if (rect.top < bounds.top + headerHeight) scroll.current.scrollTop -= bounds.top + headerHeight - rect.top + 12;
     }
   };
 
   useEffect(() => {
-    const selected = table.current?.querySelector<HTMLElement>(".heatmap-prompt[aria-pressed=true]");
+    const selected = table.current?.querySelector<HTMLElement>(`.heatmap-cell[data-column="${selectedIndex}"]`);
     if (selected) reveal(selected);
     setHover(null);
-  }, [selectedKey, prompts.length]);
+  }, [selectedIndex, prompts.length, fileColumnPinned]);
+
+  useEffect(() => {
+    const viewport = scroll.current;
+    const header = table.current?.querySelector("tbody th");
+    if (!viewport || !header) return;
+    const measure = () => {
+      const promptWidth = table.current?.querySelector(".heatmap-prompt-title")?.getBoundingClientRect().width ?? 0;
+      setFileColumnPinned(header.getBoundingClientRect().width + Math.max(60, promptWidth + 16) <= viewport.clientWidth);
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(measure);
+    observer?.observe(viewport);
+    observer?.observe(header);
+    return () => observer?.disconnect();
+  }, [prompts.length, groups[0]?.workspace]);
 
   useEffect(() => {
     const dismiss = () => setHover(null);
@@ -81,30 +95,31 @@ export function FileHeatmap({ prompts, paths, mode, selectedKey, selectedFile, s
     <section className="activity-map" aria-label="File activity heatmap">
       <div className="activity-map-heading">
         <div><h2 className="activity-eyebrow">Activity map</h2><span className="activity-map-size">{paths.length} files × {prompts.length} prompts</span></div>
-        <span className="activity-timeline">Earlier <Icon name="arrow" className="size-3" /> Latest</span>
       </div>
-      <div className="heatmap-filter-guide"><span id="prompt-filter-hint">Click a candle to filter by prompt</span><div className="heatmap-change-key" aria-label="Candle colors"><span><i data-change="created" />Created</span><span><i data-change="edited" />Edited</span><span><i data-change="deleted" />Deleted</span></div></div>
-      <div className="heatmap-scroll" ref={scroll} onScroll={() => setHover(null)}>
+      <div className="heatmap-scroll" ref={scroll} data-file-column-pinned={fileColumnPinned || undefined} onScroll={() => setHover(null)}>
         {prompts.length === 0 ? <div className="activity-empty"><Icon name="activity" className="size-8 text-accent" /><h3>Ready when you are</h3><p>Waiting for a recorded prompt or execution. File activity will appear here as your agent works.</p></div> : (
           <>
             <table className="heatmap" ref={table} style={{ "--prompt-count": prompts.length } as CSSProperties} aria-label="File operations by prompt">
-              <caption className="sr-only">Rows are observed files. Columns are prompts in recorded order. Cell intensity represents {metricLabel(mode)}. Candles show confirmed, unreverted changes: height is change volume, with green creations, blue edits, and red deletions in proportion. Click a candle to filter; click it again or choose All prompts to reset.</caption>
+              <caption className="sr-only">Rows are observed files grouped by whether they are in or outside the recorded workspace. Files without enough workspace context are marked unknown. Columns are prompts in recorded order. Cell intensity represents {metricLabel(mode)}. Select a cell to inspect its file and prompt; choose All prompts to reset.</caption>
               <colgroup><col className="heatmap-file-column" />{prompts.map((prompt) => <col key={prompt.key} />)}</colgroup>
-              <thead><tr>
-                <th scope="col" className="heatmap-corner"><span>Changes per prompt <Icon name="arrow" className="size-3" /></span><small>Observed files</small></th>
-                {prompts.map((prompt, column) => <th key={prompt.key} scope="col" data-selected={prompt.key === selectedKey || undefined}>
-                  <PromptCandle prompt={prompt} index={column} files={totals[column]} changes={changes[column]} maximum={maximum} selected={prompt.key === selectedKey} hovered={hover?.key === prompt.key} sessionTitle={sessionTitle(prompt.activity.sessionID)} onSelect={(element) => onSelect(prompt.key === selectedKey ? null : prompt.key, null, element)} />
-                </th>)}
-              </tr></thead>
-              <tbody>{folders.map((folder) => <Fragment key={folder}>
-                <tr className="heatmap-folder"><th scope="rowgroup">
-                  <button type="button" className="heatmap-folder-toggle" title={folder} aria-expanded={!collapsed.has(folder)} onClick={() => {
-                    setCollapsed((previous) => { const next = new Set(previous); next.has(folder) ? next.delete(folder) : next.add(folder); return next; });
+              {groups.map((group, groupIndex) => <tbody key={group.workspace} aria-label={group.label} data-workspace={group.workspace}>
+                <tr className="heatmap-scope" data-prompt-headings={groupIndex === 0 || undefined}>
+                  <th scope="rowgroup"><span className="heatmap-scope-label">{group.label}<small>{group.paths.length} {group.paths.length === 1 ? "file" : "files"}</small></span></th>
+                  {prompts.map((prompt, column) => groupIndex === 0
+                    ? <th key={prompt.key} scope="col" className="heatmap-prompt-title" title={prompt.activity.text}
+                      aria-label={`Prompt ${column + 1}: ${prompt.activity.text}`} data-selected={prompt.key === selectedKey || undefined}>Prompt {column + 1}</th>
+                    : <td key={prompt.key} data-selected={prompt.key === selectedKey || undefined} />)}
+                </tr>
+                {group.rows.map((row) => {
+                  const path = row.path;
+                  if (row.kind === "folder") return <tr key={`folder:${path}`} className="heatmap-folder" style={{ "--tree-depth": row.depth } as CSSProperties}><th scope="rowgroup">
+                  <button type="button" className="heatmap-folder-toggle" title={path} aria-expanded={!collapsed.has(row.key)} onClick={() => {
+                    setCollapsed((previous) => { const next = new Set(previous); next.has(row.key) ? next.delete(row.key) : next.add(row.key); return next; });
                     setHover(null);
-                  }}><Icon name="down" className="folder-chevron size-2.5" /><Icon name="folder" className="size-3" /><span>{folder === "/" ? "/" : `${folder}/`}</span><small>{paths.filter((path) => folderName(path) === folder).length}</small></button>
-                </th>{prompts.map((prompt) => <td key={prompt.key} data-selected={prompt.key === selectedKey || undefined} />)}</tr>
-                {!collapsed.has(folder) && paths.filter((path) => folderName(path) === folder).map((path) => <tr key={path} className="heatmap-file" data-selected={path === selectedFile || undefined}>
-                  <th scope="row" className="heatmap-file-label"><button type="button" title={path} onClick={(event) => onSelect(selectedKey ?? null, path, event.currentTarget)}><span className="heatmap-file-type">{fileName(path).includes(".") ? fileName(path).split(".").at(-1)?.slice(0, 3).toUpperCase() : "·"}</span><span className="truncate font-mono">{fileName(path)}</span></button></th>
+                  }}><Icon name="down" className="folder-chevron size-2.5" /><Icon name="folder" className="size-3" /><span>{row.label}</span><small>{row.count}</small></button>
+                </th>{prompts.map((prompt) => <td key={prompt.key} data-selected={prompt.key === selectedKey || undefined} />)}</tr>;
+                  return <tr key={`file:${path}`} className="heatmap-file" style={{ "--tree-depth": row.depth } as CSSProperties} data-selected={path === selectedFile || undefined}>
+                  <th scope="row" className="heatmap-file-label"><button type="button" title={path} onClick={(event) => onSelect(selectedKey ?? null, path, event.currentTarget)}><span className="heatmap-file-type">{fileName(path).includes(".") ? fileName(path).split(".").at(-1)?.slice(0, 3).toUpperCase() : "·"}</span><span className="heatmap-file-name font-mono">{fileName(path)}</span></button></th>
                   {prompts.map((prompt, column) => {
                     const touches = prompt.files.get(path) ?? noTouches;
                     const count = operationCount(touches, mode);
@@ -124,8 +139,8 @@ export function FileHeatmap({ prompts, paths, mode, selectedKey, selectedFile, s
                       onFocus={(event) => { setFocused({ path, key: prompt.key }); showTooltip(event.currentTarget, path, prompt.key); }} onBlur={() => setHover(null)}
                       onKeyDown={(event) => navigate(event, path, column)}>{count || ""}</button></td>;
                   })}
-                </tr>)}
-              </Fragment>)}</tbody>
+                </tr>;
+              })}</tbody>)}
             </table>
             {!paths.length && <div className="activity-empty"><h3>No matching files</h3><p>Try a different search, or wait for explicit file activity to be recorded.</p></div>}
           </>

@@ -3,6 +3,7 @@ import type { ViewerMessage } from "../../shared/viewer-protocol";
 import { applyActivityUpdate, type SessionActivity } from "../../shared/activity-protocol";
 
 export type ActivityMode = "all" | "reads" | "changes";
+export type FileWorkspace = "workspace" | "outside" | "unknown";
 
 export interface ActivityPrompt {
   key: string;
@@ -10,6 +11,7 @@ export interface ActivityPrompt {
   files: Map<string, FileTouch[]>;
   eventIDs: Set<number>;
   fileEventIDs: Map<string, Set<number>>;
+  fileWorkspaces: Map<string, FileWorkspace>;
   pluginID: string;
   apiVersion?: string;
   startEventID: number;
@@ -49,7 +51,7 @@ export function collectHeatmapActivity(heatmaps: SessionActivity[], selectedSess
       if (item.kind !== "prompt" || item.phase !== "active") continue;
       retained.set(item.id, {
         key: item.id, activity: { id: item.id, sessionID, text: item.text, files: [] },
-        files: new Map(), eventIDs: new Set(item.eventIDs), fileEventIDs: new Map(),
+        files: new Map(), eventIDs: new Set(item.eventIDs), fileEventIDs: new Map(), fileWorkspaces: new Map(),
         pluginID: item.source.pluginID, startEventID: item.startEventID, timestamp: item.timestamp,
       });
     }
@@ -60,6 +62,7 @@ export function collectHeatmapActivity(heatmaps: SessionActivity[], selectedSess
       for (const id of item.eventIDs) prompt.eventIDs.add(id);
       const paths = item.kind === "file.grep" ? item.status === "completed" ? item.matchedFiles : [] : [item.path];
       for (const path of new Set(paths)) {
+        prompt.fileWorkspaces.set(path, mergeWorkspace(prompt.fileWorkspaces.get(path), fileWorkspace(path, item.workspaceRoot)));
         prompt.activity.files.push({
           path, callID: item.source.callID,
           action: item.kind === "file.change" ? item.operation ?? item.action : "read",
@@ -83,6 +86,7 @@ export function aggregateActivity(prompts: ActivityPrompt[]): ActivityPrompt | u
   const files = new Map<string, FileTouch[]>();
   const eventIDs = new Set<number>();
   const fileEventIDs = new Map<string, Set<number>>();
+  const fileWorkspaces = new Map<string, FileWorkspace>();
   for (const prompt of prompts) {
     for (const [path, touches] of prompt.files) {
       const entries = files.get(path) ?? [];
@@ -97,6 +101,9 @@ export function aggregateActivity(prompts: ActivityPrompt[]): ActivityPrompt | u
       for (const id of ids) retained.add(id);
       fileEventIDs.set(path, retained);
     }
+    for (const [path, workspace] of prompt.fileWorkspaces) {
+      fileWorkspaces.set(path, mergeWorkspace(fileWorkspaces.get(path), workspace));
+    }
   }
   const sessionIDs = new Set(prompts.map((prompt) => prompt.activity.sessionID));
   return {
@@ -105,8 +112,92 @@ export function aggregateActivity(prompts: ActivityPrompt[]): ActivityPrompt | u
       id: "session-overview", sessionID: sessionIDs.size === 1 ? prompts[0].activity.sessionID : "",
       text: "All prompts", files: [...files.values()].flat(),
     },
-    files, eventIDs, fileEventIDs,
+    files, eventIDs, fileEventIDs, fileWorkspaces,
   };
+}
+
+export function fileWorkspace(path: string, root?: string): FileWorkspace {
+  const normalized = path.replaceAll("\\", "/");
+  if (normalized === ".." || normalized.startsWith("../")) return "outside";
+  if (/^(?:[a-z]:)?\//i.test(normalized)) {
+    if (!root) return "unknown";
+    const base = root.replaceAll("\\", "/").replace(/\/+$/, "");
+    return normalized === base || normalized.startsWith(`${base}/`) ? "workspace" : "outside";
+  }
+  if (/^[a-z]:/i.test(normalized) || normalized.startsWith("~/")) return "unknown";
+  return "workspace";
+}
+
+function mergeWorkspace(previous: FileWorkspace | undefined, next: FileWorkspace): FileWorkspace {
+  return previous === undefined || previous === next ? next : "unknown";
+}
+
+export function groupWorkspacePaths(prompts: ActivityPrompt[], paths: string[]) {
+  const workspaces = new Map<string, FileWorkspace>();
+  for (const prompt of prompts) {
+    for (const [path, workspace] of prompt.fileWorkspaces) {
+      workspaces.set(path, mergeWorkspace(workspaces.get(path), workspace));
+    }
+  }
+  return ([
+    { workspace: "outside", label: "Outside workspace" },
+    { workspace: "workspace", label: "In workspace" },
+    { workspace: "unknown", label: "Workspace unknown" },
+  ] as const).map((group) => ({
+    ...group, paths: paths.filter((path) => workspaces.get(path) === group.workspace),
+  })).filter((group) => group.paths.length > 0);
+}
+
+export type FileActivityRow =
+  | { kind: "folder"; path: string; key: string; label: string; depth: number; count: number }
+  | { kind: "file"; path: string; depth: number };
+
+export function fileActivityRows(paths: string[], workspace: FileWorkspace, collapsed: ReadonlySet<string>): FileActivityRow[] {
+  const rows: FileActivityRow[] = [];
+  const folderKey = (path: string) => JSON.stringify([workspace, path]);
+  if (workspace !== "workspace") {
+    for (const folder of new Set(paths.map(folderName))) {
+      const files = paths.filter((path) => folderName(path) === folder);
+      const key = folderKey(folder);
+      rows.push({ kind: "folder", path: folder, key, label: folder === "/" ? "/" : `${folder}/`, depth: 0, count: files.length });
+      if (!collapsed.has(key)) rows.push(...files.map((path) => ({ kind: "file" as const, path, depth: 1 })));
+    }
+    return rows;
+  }
+  interface Directory {
+    path: string;
+    name: string;
+    folders: Map<string, Directory>;
+    files: string[];
+    count: number;
+  }
+  const directory = (path: string, name: string): Directory => ({ path, name, folders: new Map(), files: [], count: 0 });
+  const root = directory("", "");
+  for (const path of new Set(paths)) {
+    const parts = path.split("/");
+    let parent = root;
+    for (let index = 0; index < parts.length - 1; index++) {
+      const name = parts[index];
+      let child = parent.folders.get(name);
+      if (!child) {
+        child = directory(parts.slice(0, index + 1).join("/") || "/", name);
+        parent.folders.set(name, child);
+      }
+      child.count++;
+      parent = child;
+    }
+    parent.files.push(path);
+  }
+  const visit = (parent: Directory, depth: number) => {
+    for (const child of [...parent.folders.values()].sort((a, b) => a.name.localeCompare(b.name))) {
+      const key = folderKey(child.path);
+      rows.push({ kind: "folder", path: child.path, key, label: `${child.name}/`, depth, count: child.count });
+      if (!collapsed.has(key)) visit(child, depth + 1);
+    }
+    for (const path of parent.files.sort((a, b) => a.localeCompare(b))) rows.push({ kind: "file", path, depth });
+  };
+  visit(root, 0);
+  return rows;
 }
 
 export function changeBreakdown(touches: FileTouch[]) {

@@ -4,7 +4,7 @@ import { EventFeed } from "./EventFeed";
 import { FileHeatmap } from "./FileHeatmap";
 import { FileInspector } from "./FileInspector";
 import { Icon } from "./Icon";
-import { aggregateActivity, collectActivity, fileName, promptNumber, type ActivityMode, type ActivityPrompt } from "./file-activity-model";
+import { collectActivity, fileName, promptNumber, type ActivityMode, type ActivityPrompt } from "./file-activity-model";
 import type { ReceivedEvent } from "./useViewer";
 
 interface Selection {
@@ -41,18 +41,17 @@ export function FileActivity({ events, sessions, selectedSession, activityPrompt
   const current = selection.session === selectedSession ? selection : { session: selectedSession, prompt: null, file: null };
   const selectedPrompt = prompts.find((item) => item.key === current.prompt);
   const overview = !selectedPrompt;
-  const summary = useMemo(() => aggregateActivity(prompts), [prompts]);
-  const prompt = selectedPrompt ?? summary;
   const index = selectedPrompt ? prompts.indexOf(selectedPrompt) : -1;
   const allPaths = useMemo(() => [...new Set(prompts.flatMap((item) => [...item.files.keys()]))].sort((a, b) => a.localeCompare(b)), [prompts]);
   const paths = allPaths.filter((path) => path.toLowerCase().includes(search.trim().toLowerCase()));
   const sessionTitle = (sessionID: string) => sessions.find((session) => session.sessionID === sessionID)?.title || sessionID;
-  const relatedIDs = prompt ? current.file ? prompt.fileEventIDs.get(current.file) ?? emptyEventIDs : prompt.eventIDs : emptyEventIDs;
-  const related = relatedSession === selectedSession && Boolean(prompt);
-  const scope = related && prompt ? `${overview ? "All prompts" : `Prompt ${promptNumber(index)}`}${current.file ? ` / ${fileName(current.file)}` : " / all files"}` : "All events";
+  const relatedIDs = selectedPrompt ? current.file ? selectedPrompt.fileEventIDs.get(current.file) ?? emptyEventIDs : selectedPrompt.eventIDs : emptyEventIDs;
+  const related = relatedSession === selectedSession && Boolean(selectedPrompt);
+  const scope = related ? `Prompt ${promptNumber(index)}${current.file ? ` / ${fileName(current.file)}` : " / all files"}` : "All events";
   const eventCount = related ? relatedIDs.size : events.filter((message) => !selectedSession || (message.session?.sessionID ?? message.event.sessionID) === selectedSession).length;
 
   useEffect(() => {
+    setSelection((previous) => previous.session === selectedSession ? previous : { session: selectedSession, prompt: null, file: null });
     setMobileOpen(false);
     setRelatedSession(null);
     setAnnouncement("");
@@ -99,6 +98,7 @@ export function FileActivity({ events, sessions, selectedSession, activityPrompt
 
   const resetPrompts = () => {
     setSelection({ session: selectedSession, prompt: null, file: null });
+    setMobileOpen(false);
     setRelatedSession(null);
     setAnnouncement("Showing all prompts in the session.");
     onPromptNavigate?.(undefined);
@@ -112,7 +112,7 @@ export function FileActivity({ events, sessions, selectedSession, activityPrompt
     setSelection({ session: selectedSession, prompt: key, file });
     if (key !== current.prompt) onPromptNavigate?.(prompts.find((item) => item.key === key)?.startEventID);
     setRelatedSession(key !== null || related ? selectedSession : null);
-    setMobileOpen(true);
+    setMobileOpen(key !== null);
     setAnnouncement(`${key === null ? "All prompts" : `Prompt ${promptNumber(prompts.findIndex((item) => item.key === key))}`} selected${file ? `, ${file}` : ""}.`);
   };
   const closeInspector = () => {
@@ -128,9 +128,9 @@ export function FileActivity({ events, sessions, selectedSession, activityPrompt
         <div className="activity-filters" role="group" aria-label="Activity type">{([['all', 'All activity'], ['reads', 'Reads'], ['changes', 'Changes']] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={mode === value} onClick={() => setMode(value)}>{label}</button>)}</div>
         <div className="activity-prompt-scope"><span>{overview ? "Session overview" : `Filtering prompt ${promptNumber(index)}`}</span><button type="button" className="activity-follow" aria-pressed={overview} onClick={resetPrompts}><Icon name={overview ? "layers" : "close"} className="size-3.5" />All prompts</button></div>
       </div>
-      <div className="activity-body">
+      <div className="activity-body" data-inspector-open={selectedPrompt ? true : undefined}>
         <FileHeatmap key={selectedSession} prompts={prompts} paths={paths} mode={mode} selectedKey={selectedPrompt?.key} selectedFile={current.file} sessionTitle={sessionTitle} onSelect={select} />
-        <FileInspector prompt={prompt} index={index} total={prompts.length} selectedFile={current.file} sessionTitle={selectedPrompt ? sessionTitle(selectedPrompt.activity.sessionID) : selectedSession ? sessionTitle(selectedSession) : "All sessions"}
+        {selectedPrompt && <FileInspector prompt={selectedPrompt} index={index} total={prompts.length} selectedFile={current.file} sessionTitle={sessionTitle(selectedPrompt.activity.sessionID)}
           eventCount={relatedIDs.size} mobileOpen={mobileOpen} closeRef={closeRef} onClose={closeInspector}
           onNavigate={(next) => select(prompts[next].key, current.file)} onSelectFile={(file, element) => select(selectedPrompt?.key ?? null, file, element)}
           onInspect={() => {
@@ -140,7 +140,7 @@ export function FileActivity({ events, sessions, selectedSession, activityPrompt
              requestAnimationFrame(() => {
                traceSummary.current?.focus({ preventScroll: true });
              });
-          }} />
+          }} />}
       </div>
       <section className="activity-trace" data-open={traceOpen} aria-label="Event stream sheet">
         <button type="button" className="activity-trace-toggle" ref={traceSummary} aria-expanded={traceOpen} aria-controls="event-stream-sheet" aria-label={traceOpen ? "Collapse event stream" : "Expand event stream"} onClick={() => setTraceOpen((open) => !open)}>
