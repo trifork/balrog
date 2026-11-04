@@ -68,6 +68,117 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+test("/reason shows the simple reason table, prompt toggles and file search, with session selection", async () => {
+  window.history.replaceState(null, "", "/reason?session=s1&keep=yes");
+  const user = userEvent.setup();
+  state.events = ["s1", "s2"].map((sessionID, index) => ({
+    ...message(index + 1, "session.tool.called", sessionID),
+    activityUpdates: activityUpdates(index + 1, { id: "p1", sessionID, text: "Read files", files: [
+      { path: `${sessionID}.ts`, action: "read" as const, outcome: "success" as const, callID: "c1" },
+    ] }),
+  }));
+  render(<App />);
+  const reasonMap = () => within(screen.getByRole("table", { name: "File access reasons" }));
+  expect(reasonMap().getByRole("rowheader", { name: "s1.ts" })).toBeTruthy();
+  expect(reasonMap().queryByText("s2.ts")).toBeNull();
+  expect(screen.getByRole("searchbox", { name: "Find a file" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /event stream/ })).toBeNull();
+  expect(screen.queryByRole("slider")).toBeNull();
+  expect(screen.queryByRole("complementary")).toBeNull();
+  expect(screen.queryByText("Session overview")).toBeNull();
+  expect(screen.queryByRole("table", { name: "Reason explanations" })).toBeNull();
+  const promptToggle = within(screen.getByRole("group", { name: "Prompts" })).getByRole("button", { name: /Read files/ });
+  await user.keyboard("{Shift>}");
+  await user.click(promptToggle);
+  await user.keyboard("{/Shift}");
+  expect(reasonMap().queryByText("s1.ts")).toBeNull();
+  await user.click(screen.getByRole("tab", { name: /Second session/ }));
+  expect(window.location.pathname).toBe("/reason");
+  expect(window.location.search).toBe("?session=s2&keep=yes");
+  expect(reasonMap().getByRole("rowheader", { name: "s2.ts" })).toBeTruthy();
+  expect(within(screen.getByRole("group", { name: "Prompts" })).getByRole("button").getAttribute("aria-pressed")).toBe("true");
+  act(() => {
+    window.history.replaceState(null, "", "/?session=s1");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  expect(screen.getByRole("region", { name: "File activity heatmap" })).toBeTruthy();
+  expect(screen.queryByRole("table", { name: "Reason explanations" })).toBeNull();
+});
+
+test("/capabilities shows only the capability table and keeps session selection and view links", async () => {
+  window.history.replaceState(null, "", "/capabilities?session=s1&keep=yes");
+  state.events = [command(1), command(2, "s2")];
+  const user = userEvent.setup();
+  render(<App />);
+  const attempts = () => within(screen.getByRole("table", { name: "Attempted capabilities" }));
+  expect(attempts().getAllByRole("row")).toHaveLength(2);
+  expect(attempts().getByText("Run shell command")).toBeTruthy();
+  expect(attempts().queryByText("Run the tests.")).toBeNull();
+  expect(screen.queryByRole("button", { name: /event stream/ })).toBeNull();
+  expect(screen.queryByRole("slider")).toBeNull();
+  expect(screen.queryByRole("complementary")).toBeNull();
+  expect(screen.getByRole("link", { name: "Reasons" }).getAttribute("href")).toBe("/reason?session=s1&keep=yes");
+  expect(screen.getByRole("link", { name: "Activity map" }).getAttribute("href")).toBe("/?session=s1&keep=yes");
+  await user.click(screen.getByRole("tab", { name: /Second session/ }));
+  expect(window.location.pathname).toBe("/capabilities");
+  expect(window.location.search).toBe("?session=s2&keep=yes");
+  expect(attempts().getAllByRole("row")).toHaveLength(2);
+  await user.click(screen.getByRole("tab", { name: /All sessions/ }));
+  expect(attempts().getAllByRole("row")).toHaveLength(3);
+  act(() => {
+    window.history.replaceState(null, "", "/reason");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  expect(screen.getByRole("table", { name: "File access reasons" })).toBeTruthy();
+  expect(screen.queryByRole("table", { name: "Attempted capabilities" })).toBeNull();
+});
+
+test.each(["/reason", "/capabilities"])("%s supports exclusive clicks and independent Shift-click session toggles", async (path) => {
+  window.history.replaceState(null, "", `${path}?keep=yes`);
+  state.sessions.push({ sessionID: "s3", title: "Third session", eventCount: 1, lastEventTag: "session.tool.success", lastEventAt: 0, tags: [] });
+  state.events = ["s1", "s2", "s3"].map((sessionID, index) => ({
+    ...command(index + 1, sessionID),
+    activityUpdates: activityUpdates(index + 1, { id: "p1", sessionID, text: `Prompt for ${sessionID}`, files: [
+      { path: `${sessionID}.ts`, action: "read" as const, outcome: "success" as const, callID: `call-${index + 1}` },
+    ] }),
+  }));
+  render(<App />);
+  const first = screen.getByRole("tab", { name: "First session" });
+  const second = screen.getByRole("tab", { name: "Second session" });
+  const third = screen.getByRole("tab", { name: "Third session" });
+  const choices = () => [first, second, third].map((tab) => tab.getAttribute("aria-selected"));
+  const visiblePrompts = () => within(screen.getByRole("group", { name: "Prompts" })).getAllByRole("button").map((button) => button.textContent);
+  const rows = () => within(screen.getByRole("table")).getAllByRole("row").slice(1);
+  fireEvent.click(first, { shiftKey: true });
+  expect(choices()).toEqual(["false", "true", "true"]);
+  expect(visiblePrompts()).toEqual(["Prompt 01Prompt for s2", "Prompt 02Prompt for s3"]);
+  expect(rows()).toHaveLength(2);
+  fireEvent.click(first);
+  expect(choices()).toEqual(["true", "false", "false"]);
+  fireEvent.click(second, { shiftKey: true });
+  expect(choices()).toEqual(["true", "true", "false"]);
+  expect(visiblePrompts()).toEqual(["Prompt 01Prompt for s1", "Prompt 02Prompt for s2"]);
+  expect(rows()).toHaveLength(2);
+  expect(new URL(window.location.href).searchParams.getAll("session")).toEqual(["s1", "s2"]);
+  expect(new URL(window.location.href).searchParams.get("keep")).toBe("yes");
+  expect(screen.getByRole("link", { name: path === "/reason" ? "Capabilities" : "Reasons" }).getAttribute("href")).toContain("session=s1&session=s2");
+  fireEvent.click(first);
+  expect(choices()).toEqual(["true", "false", "false"]);
+  fireEvent.click(first, { shiftKey: true });
+  expect(choices()).toEqual(["false", "false", "false"]);
+  expect(screen.getByRole("tab", { name: "All sessions" }).getAttribute("aria-selected")).toBe("false");
+  expect(within(screen.getByRole("table")).getAllByRole("row")).toHaveLength(1);
+  act(() => {
+    window.history.replaceState(null, "", `${path}?keep=yes&session=s2&session=s3`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  expect(choices()).toEqual(["false", "true", "true"]);
+  expect(visiblePrompts()).toEqual(["Prompt 01Prompt for s2", "Prompt 02Prompt for s3"]);
+  fireEvent.click(screen.getByRole("tab", { name: "All sessions" }));
+  expect(visiblePrompts()).toHaveLength(3);
+  expect(window.location.search).toBe("?keep=yes");
+});
+
 test("prioritizes the heatmap and reveals newest-first events, command previews and safe raw details", async () => {
   const user = userEvent.setup();
   const { container } = render(<App />);

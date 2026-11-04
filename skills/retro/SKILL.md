@@ -14,7 +14,7 @@ in [assets/retro-output.md](assets/retro-output.md). Read that editable Markdown
 template before composing the report. It owns the report layout and table
 columns; fill its placeholders and repeat rows as needed. Resolve it relative
 to this skill's base directory, not the repository being reviewed.
-Publish calculated reasons and outcomes to Balrog as separate retrospective annotations.
+Publish calculated capabilities, reasons, and outcomes to Balrog as separate retrospective annotations.
 Repository recommendations still require separate approval before implementation.
 
 ## 1. Select the session and snapshot
@@ -98,14 +98,25 @@ when its code clearly performs reporting and no unrelated work. If uncertain,
 include it. State the number excluded. Missing outcomes on reporting-only
 wrappers are not failed work calls.
 
-Assign `reason` and `outcome` in the report as retrospective assessments. The
+Assign `capability`, `reason`, and `outcome` in the report as retrospective assessments. The
 original records remain unchanged; Balrog stores assessments as separate annotations.
 State this provenance once above the table.
 These columns are your evidence-based interpretations, not the original agent's
 reports or access to its private reasoning. Historical recorded annotations can
 support an assessment, but must be checked against the actual conversation and results.
 
-- `reason`: describe the call's purpose directly from the task, preceding discussion,
+- `capability`: describe the technical operation attempted, using a short verb/object
+  label grounded in the tool, command, and arguments. Examples include `Read file`,
+  `Run .NET tests`, and `Get status from production Kubernetes deployment`.
+  Include an environment or platform only when established by recorded evidence.
+  Use the operation's technical scope, not the motivation for performing it.
+  The same technical operation must use the same capability label, even with
+  different reasons. Reuse a canonical label across equivalent calls; filenames,
+  user tasks, success, and failure do not change the capability. Distinct operations
+  through the same shell tool can have different capabilities. Use `unknown` when
+  the operation cannot be established.
+  Reuse existing evidence-supported capability labels in the snapshot where applicable.
+- `reason`: describe why the call was needed for the task, from the preceding discussion,
   instructions, and arguments, without an `Inferred:` prefix. Writing a reason
   retrospectively does not by itself make it less certain than one supplied at
   call time. Qualify actual uncertainty and use `unknown` when the evidence does
@@ -114,6 +125,12 @@ support an assessment, but must be checked against the actual conversation and r
   call's result. Mark a pending call as pending and an unavailable result as unknown.
   Later calls can explain its contribution; cite their display IDs and distinguish
   later confirmation from what this call itself established.
+
+For example, `read({"path":"README.md"})` has capability `Read file` whether its
+reason is `Find documentation for lifecycle management` or `Check deployment
+configuration`. A command that queries production Kubernetes deployment status
+has that technical capability even when the reason is `Investigate lifecycle
+management`. Check all labels for consistent technical scope before publication.
 
 Redact credentials and sensitive personal data explicitly. Escape Markdown pipes
 and line breaks without changing quoted evidence.
@@ -251,6 +268,7 @@ Set `Content-Type: application/json` and send this body:
   "assessments": [
     {
       "callID": "<original Balrog call ID>",
+      "capability": "Read file",
       "reason": "Find setup instructions.",
       "outcome": "The README contains setup instructions."
     }
@@ -262,7 +280,7 @@ Include one entry per included call, mapped to its original `callID`, not its nu
 Send the same redacted assessments used in the report, before Markdown table escaping.
 Keep `unknown` and pending assessments explicit as non-empty strings.
 Omit excluded helpers and calls outside the snapshot. Skip publication when no calls remain.
-Publish only reasons and outcomes, not recommendations, arguments, or raw results.
+Publish capabilities, reasons, and outcomes, not recommendations, arguments, or raw results.
 The endpoint accepts at most 1 MiB and rejects duplicate or unknown call IDs before writing.
 If the batch exceeds this limit, disclose the publication limit rather than silently dropping entries.
 

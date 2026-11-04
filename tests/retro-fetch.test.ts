@@ -29,7 +29,7 @@ test("retro retrieval always supplies a session and preserves evidence while sor
     recording: { source: "recorded-events", before: null, unknownTimestampEvents: 1, excludedByCutoff: 0 },
     executions: [
       { callID: "late", startedAt: 30, createdAt: 1, reason: "Check the build", outcome: "Build passed" },
-      { callID: "early", startedAt: 10, createdAt: 999, reason: "Inspect A | B.\nSuitability is not verified.", outcome: "Found \"CandidateA\"; not verified." },
+      { callID: "early", startedAt: 10, createdAt: 999, capability: "Read file", reason: "Inspect A | B.\nSuitability is not verified.", outcome: "Found \"CandidateA\"; not verified." },
       { callID: "tie", startedAt: 10, reason: "Read guidance", outcome: null },
       { callID: "unknown", startedAt: null, reason: null, outcome: null },
     ],

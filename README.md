@@ -351,6 +351,48 @@ active when they were observed, with completion linked by call ID; this is not
 causal attribution for concurrent prompts or agents. Activity is reconstructed
 when replaying a SQLite recording.
 
+### File access reasons
+
+Open `/reason` or choose **Reasons** in the header for a simpler file/reason table.
+Each file lists the distinct reasons from enabled prompts. Prompt toggles at the
+bottom show their recorded text. Click to select only one prompt; Shift-click to
+toggle a prompt without changing the others. All prompts are enabled initially.
+Hover or focus a reason to highlight its matching file entries and associated
+prompts. Click to pin the highlight. Use **Clear highlight** or Escape to clear
+it. File search and session tabs narrow the view. Reasons come from recorded
+tool annotations, including later `/retro` assessments. Missing explanations
+show **No recorded reason**. Longer reasons remain available in the title tooltip.
+Reasons belong to individual calls, not every access to the same file. Calls
+after a `/retro` snapshot cutoff, including the retrospective's own file reads,
+remain unassessed unless a later retrospective includes them.
+
+### Attempted capabilities
+
+Open `/capabilities` or choose **Capabilities** in the header for a simple table
+of technical capabilities, tool calls, and results. Session tabs select the recording
+to inspect. Invocations are grouped under their capability, with one result per
+call. Groups with failures appear first, and failed invocations appear first
+within each group. Prompt selection works like `/reason`: click to select only
+one prompt, or Shift-click to toggle it without changing the others.
+A capability describes the operation, such as **Read file** or **Get status from
+production Kubernetes deployment**. Its reason describes why the agent performed
+it, such as finding lifecycle documentation. The same technical operation keeps
+the same capability even when its reason changes.
+
+Capability labels come from a separate `/retro` assessment field, never from
+reasons or descriptions. Unassessed calls use basic tool-level labels, such as
+**Read file** or **Run shell command**. Unsupported tools show **Unknown capability**.
+Rerun `/retro` after reloading the updated skill to populate richer labels in older
+recordings. Original calls and results remain unchanged.
+
+Completed calls show **ok** or a recorded error. Nonzero command exit codes and
+explicit error results count as failures even when the tool itself returns
+successfully. Calls without a completion show **Pending**. This describes recorded
+execution, not independent proof that the broader task was accomplished.
+The assessment POST endpoint accepts an optional non-empty `capability` string
+alongside `reason` and `outcome`. Legacy requests remain valid; omitting the field
+preserves an existing capability label. Labels persist on replay and update live.
+
 ### Approve sensitive file reads
 
 The V2 plugin registers a `permission.evaluate` hook that requires approval for
@@ -588,14 +630,14 @@ conversation in the caller's session. The command attaches the skill explicitly
 and captures a cutoff so the review does not grade its own activity.
 
 The skill retrieves one conversation snapshot and reads the entire chronological
-investigation. It assigns each call a reason and outcome after the fact, using
+investigation. It assigns each call a capability, reason, and outcome after the fact, using
 the task, preceding discussion, arguments, and raw results. These are explicitly
 labeled retrospective assessments, not original agent reports. Unsupported
 purposes or results remain unknown; pending calls remain pending. Historical
 annotations are supporting evidence, not independently verified conclusions.
 
-The default call table contains a numeric `id` (1, 2, 3, ...), command, reason,
-and outcome. A separate table covers higher-level improvements with `LOW`,
+The default call table contains a numeric `id` (1, 2, 3, ...), command, capability,
+reason, and outcome. A separate table covers higher-level improvements with `LOW`,
 `MEDIUM`, or `HIGH` complexity and expected gain, supporting numbered calls,
 and a concrete validation plan. Timestamps and raw call IDs appear only on request.
 
@@ -625,7 +667,7 @@ Assessments use `POST /api/sessions/<encoded-session-id>/assessments` with
 ```json
 {
   "assessments": [
-    { "callID": "original-call-id", "reason": "Find setup instructions.", "outcome": "Setup instructions found." }
+    { "callID": "original-call-id", "capability": "Read file", "reason": "Find setup instructions.", "outcome": "Setup instructions found." }
   ]
 }
 ```

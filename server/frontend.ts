@@ -13,7 +13,8 @@ const contentTypes: Record<string, string> = {
 export async function serveFrontend(pathname: string, response: ServerResponse): Promise<void> {
   try {
     const decoded = decodeURIComponent(pathname);
-    const filename = resolve(directory, decoded === "/" ? "index.html" : `.${decoded}`);
+    const page = ["/", "/reason", "/reason/", "/capabilities", "/capabilities/"].includes(decoded);
+    const filename = resolve(directory, page ? "index.html" : `.${decoded}`);
     const contentType = contentTypes[extname(filename)];
     if (!filename.startsWith(`${resolve(directory)}${sep}`) || !contentType || decoded.includes("\0")) {
       throw new Error("Not found");

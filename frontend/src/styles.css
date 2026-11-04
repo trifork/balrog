@@ -1,5 +1,7 @@
 @import "tailwindcss" source(".");
 @import "./file-activity.css";
+@import "./reason-map.css";
+@import "./capabilities.css";
 
 @theme {
   --spacing: 4px;

@@ -1,0 +1,77 @@
+@layer components {
+  .viewer-app[data-page="capabilities"] {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .capabilities-workspace {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+    padding: 20px 28px;
+  }
+  .capabilities-workspace h1 {
+    margin-bottom: 16px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .capabilities-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    border: 1px solid var(--color-line);
+    border-radius: 6px;
+  }
+  .capabilities-table {
+    width: 100%;
+    min-width: 540px;
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
+    text-align: left;
+    font-size: 12px;
+  }
+  .capabilities-table th, .capabilities-table td {
+    padding: 12px;
+    border-bottom: 1px solid var(--color-line);
+    vertical-align: top;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .capabilities-table thead th {
+    position: sticky;
+    top: 0;
+    background: var(--color-frame);
+    color: var(--color-muted);
+    font-size: 10px;
+    font-weight: 500;
+  }
+  .capabilities-table thead th:first-child { width: 28%; }
+  .capabilities-table thead th:nth-child(2) { width: 36%; }
+  .capabilities-table tbody th {
+    border-right: 1px solid var(--color-line);
+    border-bottom: 0;
+    background: var(--color-frame);
+    font-weight: 500;
+  }
+  .capabilities-table tbody + tbody tr:first-child > * { border-top: 2px solid var(--color-line); }
+  .capabilities-table tbody tr:last-child td { border-bottom: 0; }
+  .capabilities-table code { font-size: 11px; }
+  .capabilities-content {
+    display: block;
+    max-height: 180px;
+    overflow: auto;
+  }
+  .capabilities-table [data-status="ok"] { color: #a6d9b8; }
+  .capabilities-table [data-status="error"] { color: #ed8e8e; }
+  .capabilities-table [data-status="pending"] { color: var(--color-muted); }
+  .capabilities-empty {
+    padding: 24px 12px;
+    color: var(--color-muted);
+    font-size: 12px;
+  }
+  @media (max-width: 760px) {
+    .capabilities-workspace { padding: 16px 12px; }
+    .capabilities-table th, .capabilities-table td { padding: 8px; }
+  }
+}

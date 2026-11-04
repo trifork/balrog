@@ -30,7 +30,7 @@ test("retro assessments update the HTTP and live timeline views and survive repl
   socket.send(JSON.stringify({ type: "snapshot.request" }));
   await snapshot;
   const update = once(socket, "message");
-  const assessment = { callID: "call-1", reason: "Inferred: find setup instructions.", outcome: "unknown" };
+  const assessment = { callID: "call-1", capability: "Read file", reason: "Inferred: find setup instructions.", outcome: "unknown" };
   const response = await fetch(`${origin}/api/sessions/ses_target/assessments`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ assessments: [assessment] }),
   });
@@ -40,8 +40,10 @@ test("retro assessments update the HTTP and live timeline views and survive repl
   assert.equal(message.type, "event");
   assert.equal(message.message.execution.callID, "call-1");
   assert.equal(message.message.execution.reason, assessment.reason);
+  assert.equal(message.message.execution.capability, "Read file");
   const body = await (await fetch(`${origin}/api/tool-executions?session=ses_target`)).json();
   assert.equal(body.executions[0].reason, assessment.reason);
+  assert.equal(body.executions[0].capability, "Read file");
   assert.equal(body.executions[0].outcome, "unknown");
   assert.equal(body.executions[0].startedAt, 10);
   assert.deepEqual(store.readAll()[0], original);
@@ -50,15 +52,26 @@ test("retro assessments update the HTTP and live timeline views and survive repl
   assert.deepEqual(replay.getToolExecutions("ses_target"), body.executions);
   const second = await fetch(`${origin}/api/sessions/ses_target/assessments`, {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ assessments: [{ ...assessment, outcome: "Later confirmation: instructions found." }] }),
+    body: JSON.stringify({ assessments: [{ ...assessment, reason: "Find lifecycle documentation.", outcome: "Later confirmation: instructions found." }] }),
   });
   assert.equal(second.status, 200);
   const updated = await (await fetch(`${origin}/api/tool-executions?session=ses_target`)).json();
   assert.equal(updated.executions.length, 1);
   assert.equal(updated.executions[0].outcome, "Later confirmation: instructions found.");
+  assert.equal(updated.executions[0].capability, "Read file");
+  assert.equal(updated.executions[0].reason, "Find lifecycle documentation.");
+  const legacy = await fetch(`${origin}/api/sessions/ses_target/assessments`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ assessments: [{ callID: "call-1", reason: "Find lifecycle documentation.", outcome: "Documentation found." }] }),
+  });
+  assert.equal(legacy.status, 200);
+  const preserved = await (await fetch(`${origin}/api/tool-executions?session=ses_target`)).json();
+  assert.equal(preserved.executions[0].capability, "Read file");
+  assert.equal(preserved.executions[0].reason, "Find lifecycle documentation.");
   const historical = await (await fetch(`${origin}/api/sessions/ses_target/conversation?before=11`)).json();
   assert.deepEqual(historical.events, [original]);
   assert.equal(historical.executions[0].reason, null);
+  assert.equal(historical.executions[0].capability, undefined);
   socket.close();
 });
 
@@ -80,7 +93,9 @@ test("assessment endpoint rejects invalid batches and cross-session calls before
     method: "POST", headers: { "Content-Type": "application/json", ...headers }, body,
   });
   for (const invalid of [null, [], {}, { assessments: [null] }, { assessments: [{ ...assessment, reason: " " }] },
-    { assessments: [{ ...assessment, outcome: 123 }] }, { assessments: [assessment, assessment] }]) {
+    { assessments: [{ ...assessment, outcome: 123 }] }, { assessments: [assessment, assessment] },
+    ...[null, 123, "", "  ", {}, []].map((capability) => ({ assessments: [{ ...assessment, capability }] })),
+    { assessments: [assessment, { ...assessment, callID: "other-call", capability: false }] }]) {
     assert.equal((await post(JSON.stringify(invalid))).status, 400);
   }
   assert.equal((await post("{")).status, 400);

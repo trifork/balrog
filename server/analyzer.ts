@@ -29,6 +29,7 @@ export interface ToolExecution {
   startedAt: number | null;
   completedAt: number | null;
   reason: string | null;
+  capability?: string;
   outcome: string | null;
   result: unknown;
 }
@@ -142,6 +143,8 @@ export class SessionAnalyzer {
       if (execution) {
         execution.reason = nonEmptyString(data?.["reason"]) ?? execution.reason;
         execution.outcome = nonEmptyString(data?.["outcome"]) ?? execution.outcome;
+        const capability = nonEmptyString(data?.["capability"]);
+        if (capability) execution.capability = capability;
       }
     }
     if (tag === "balrog.tool.intent" && callID) {

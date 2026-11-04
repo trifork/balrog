@@ -11,6 +11,7 @@ export interface ActivityPrompt {
   eventIDs: Set<number>;
   fileEventIDs: Map<string, Set<number>>;
   pluginID: string;
+  apiVersion?: string;
   startEventID: number;
   timestamp?: number;
 }

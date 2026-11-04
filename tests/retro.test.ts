@@ -94,7 +94,7 @@ test("retro assesses the whole conversation in one pass without per-tool model c
   assert.match(content, /Order by `startedAt` ascending/);
   assert.match(content, /\[assets\/retro-output\.md\]\(assets\/retro-output\.md\)/);
   const template = await readFile(new URL("../skills/retro/assets/retro-output.md", import.meta.url), "utf8");
-  assert.ok(template.includes("| id | command | reason | outcome |"));
+  assert.ok(template.includes("| id | command | capability | reason | outcome |"));
   assert.doesNotMatch(template, /\| id \|[^\n]*(?:improvement|complexity|gain)/);
   assert.doesNotMatch(content, /\| id \|[^\n]*(?:improvement|complexity|gain)/);
   assert.doesNotMatch(content, /\b(?:score|scores|scoring)\b|suggested command|alternative command/i);
@@ -128,6 +128,21 @@ test("retro writes purposes directly and qualifies uncertainty based on evidence
   assert.doesNotMatch(content, /"reason": "Inferred:|Distinguish an explicit explanation from an inference/);
   const template = await readFile(new URL("../skills/retro/assets/retro-output.md", import.meta.url), "utf8");
   assert.match(template, /evidence-supported purpose; unknown if unsupported/);
+});
+
+test("retro publishes a stable technical capability separately from the reason for using it", async (t) => {
+  const { skills } = await setup(t);
+  const content = skills[0].content;
+  assert.match(content, /`capability`: describe the technical operation/);
+  assert.match(content, /The same technical operation must use the same capability label/);
+  assert.match(content, /different reasons/);
+  assert.match(content, /Read file/);
+  assert.match(content, /Get status from production Kubernetes deployment/);
+  assert.match(content, /environment.*recorded evidence/);
+  assert.match(content, /"capability": "Read file"/);
+  assert.match(content, /Publish capabilities, reasons, and outcomes/);
+  const template = await readFile(new URL("../skills/retro/assets/retro-output.md", import.meta.url), "utf8");
+  assert.match(template, /technical operation; unknown if unsupported/);
 });
 
 test("retro lists activated skills, assesses task fit, and proposes bounded skill-use changes", async (t) => {

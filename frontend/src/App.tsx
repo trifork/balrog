@@ -8,12 +8,28 @@ import { PermissionRequests } from "./PermissionRequests";
 import { ReadWarning } from "./ReadWarning";
 import { Timeline } from "./Timeline";
 import { collectActivity, collectHeatmapActivity } from "./file-activity-model";
+import { ReasonMap } from "./ReasonMap";
+import { Capabilities } from "./Capabilities";
 
-const sessionFromURL = () => new URL(window.location.href).searchParams.get("session") || "";
+const sessionsFromURL = () => {
+  const params = new URL(window.location.href).searchParams;
+  return params.has("session") ? [...new Set(params.getAll("session").filter(Boolean))] : null;
+};
 
 export function App() {
   const { events, sessions, heatmaps, status, error, permissions, replyPermission } = useViewer();
-  const [selected, setSelected] = useState(sessionFromURL);
+  const [selectedSessions, setSelectedSessions] = useState(sessionsFromURL);
+  const [pathname, setPathname] = useState(() => window.location.pathname);
+  const reasonsPage = pathname === "/reason" || pathname === "/reason/";
+  const capabilitiesPage = pathname === "/capabilities" || pathname === "/capabilities/";
+  const simplePage = reasonsPage || capabilitiesPage;
+  const selected = selectedSessions?.length === 1 ? selectedSessions[0] : "";
+  const simpleEvents = useMemo(() => selectedSessions === null ? events : events.filter((message) =>
+    selectedSessions.includes(message.session?.sessionID ?? message.event.sessionID ?? "")), [events, selectedSessions]);
+  const selectionKey = JSON.stringify(selectedSessions);
+  const sessionLabel = selectedSessions === null ? "All sessions" : !selectedSessions.length ? "No sessions selected"
+    : selectedSessions.map((id) => sessions.find((session) => session.sessionID === id)?.title || id).join(", ");
+  const page = reasonsPage ? "reason" : capabilitiesPage ? "capabilities" : "activity";
   const [activeEventID, setActiveEventID] = useState<number>();
   const [followingLive, setFollowingLive] = useState(true);
   const [jumpRequest, setJumpRequest] = useState<{ id: number }>();
@@ -69,44 +85,57 @@ export function App() {
 
   useEffect(() => {
     const onPopState = () => {
-      setSelected(sessionFromURL());
+      setSelectedSessions(sessionsFromURL());
+      setPathname(window.location.pathname);
       resumeLive();
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, [resumeLive]);
 
-  const selectSession = (sessionID: string) => {
-    if (selected === sessionID) return;
+  const selectSession = (sessionID: string, toggle = false) => {
+    let next = sessionID ? [sessionID] : null;
+    if (simplePage && toggle && sessionID) {
+      const current = selectedSessions ?? sessions.map((session) => session.sessionID);
+      next = current.includes(sessionID) ? current.filter((id) => id !== sessionID) : [...current, sessionID];
+    }
+    if (JSON.stringify(next) === selectionKey) return;
     const url = new URL(window.location.href);
-    if (sessionID) url.searchParams.set("session", sessionID);
-    else url.searchParams.delete("session");
+    if (next === null) url.searchParams.delete("session");
+    else {
+      url.searchParams.set("session", next[0] ?? "");
+      for (const id of next.slice(1)) url.searchParams.append("session", id);
+    }
     window.history.pushState(null, "", url);
-    setSelected(sessionID);
+    setSelectedSessions(next);
     resumeLive();
   };
 
   return (
-    <div className="viewer-app group/app min-w-0" data-connection={status}>
+    <div className="viewer-app group/app min-w-0" data-connection={status} data-page={page}>
       <header className="viewer-header">
         <div className="flex items-center gap-2">
           <Icon name="flame" className="h-7 w-6 text-accent" />
           <div className="text-[23px] leading-[1.2] font-[720] tracking-[-1px]">balrog<span className="text-accent">.</span></div>
         </div>
-        <SessionTabs sessions={sessions} selected={selected} onSelect={selectSession} />
+        <SessionTabs sessions={sessions} selected={selected} selectedSessions={simplePage ? selectedSessions : undefined} onSelect={selectSession} />
         <div className="flex items-center gap-2.5 max-[760px]:col-start-2 max-[760px]:row-start-1 max-[760px]:gap-2">
-          <div className="inline-flex items-center gap-2 justify-self-end rounded-[20px] border border-[#d5ac6d24] bg-[#d5ac6d08] px-[9px] py-1 text-[11px] whitespace-nowrap text-[#d5ac6d] group-data-[connection=live]/app:border-[#86cfa124] group-data-[connection=live]/app:bg-[#86cfa108] group-data-[connection=live]/app:text-[#a6d9b8] max-[760px]:px-2 max-[760px]:text-[10px]" role="status"><StatusDot /><span>{status === "live" ? "Live stream" : status === "connecting" ? "Connecting" : "Reconnecting"}</span></div>
+          {([["activity", "/", "Activity map"], ["reason", "/reason", "Reasons"], ["capabilities", "/capabilities", "Capabilities"]] as const).filter(([key]) => key !== page).map(([key, path, title]) =>
+            <a key={key} className="text-[11px] text-muted hover:text-ink" href={`${path}${window.location.search}`}>{title}</a>)}
+          <div className="inline-flex items-center gap-2 justify-self-end rounded-[20px] border border-[#d5ac6d24] bg-[#d5ac6d08] px-[9px] py-1 text-[11px] whitespace-nowrap text-[#d5ac6d] group-data-[connection=live]/app:border-[#86cfa124] group-data-[connection=live]/app:bg-[#86cfa108] group-data-[connection=live]/app:text-[#a6d9b8] max-[760px]:px-2 max-[760px]:text-[10px]" role="status"><StatusDot /><span className="max-[480px]:sr-only">{status === "live" ? "Live stream" : status === "connecting" ? "Connecting" : "Reconnecting"}</span></div>
         </div>
       </header>
       <main className="viewer-main">
         {error && <p role="alert" className="viewer-error">{error}</p>}
-        {permissions.length > 0 && <div className="max-h-[35dvh] shrink-0 overflow-auto px-7 pt-4 [&>.read-approvals]:mb-0 max-[760px]:px-3">
+        {!simplePage && permissions.length > 0 && <div className="max-h-[35dvh] shrink-0 overflow-auto px-7 pt-4 [&>.read-approvals]:mb-0 max-[760px]:px-3">
           <PermissionRequests requests={permissions} sessions={sessions} live={status === "live"} onReply={replyPermission} />
         </div>}
-        <FileActivity events={events} sessions={sessions} selectedSession={selected} activityPrompts={activityPrompts} activeEventID={activeEventID} cutoffEventID={cutoffEventID} jumpRequest={jumpRequest} onPromptNavigate={navigatePrompt} />
+        {reasonsPage ? <ReasonMap key={selectionKey} events={simpleEvents} sessions={sessions} selectedSession={selected} sessionLabel={sessionLabel} />
+          : capabilitiesPage ? <Capabilities key={selectionKey} events={simpleEvents} sessions={sessions} selectedSession={selected} sessionLabel={sessionLabel} />
+          : <FileActivity events={events} sessions={sessions} selectedSession={selected} activityPrompts={activityPrompts} activeEventID={activeEventID} cutoffEventID={cutoffEventID} jumpRequest={jumpRequest} onPromptNavigate={navigatePrompt} />}
       </main>
-      <footer className="viewer-timeline min-w-0 border-t border-line bg-frame" aria-label="Bottom bar"><Timeline events={timelineEvents} evidenceEvents={events} prompts={prompts} activeEventID={activeEventID} centerRequest={promptJump} onSelect={scrubToEvent} onActivate={inspectEvent} followingLive={followingLive} onToggleLive={toggleLive} /></footer>
-      <ReadWarning requests={permissions} live={status === "live"} />
+      {!simplePage && <footer className="viewer-timeline min-w-0 border-t border-line bg-frame" aria-label="Bottom bar"><Timeline events={timelineEvents} evidenceEvents={events} prompts={prompts} activeEventID={activeEventID} centerRequest={promptJump} onSelect={scrubToEvent} onActivate={inspectEvent} followingLive={followingLive} onToggleLive={toggleLive} /></footer>}
+      {!simplePage && <ReadWarning requests={permissions} live={status === "live"} />}
     </div>
   );
 }

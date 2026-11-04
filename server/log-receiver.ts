@@ -74,7 +74,7 @@ export interface ToolAssessmentLog extends LogMetadata {
   "balrog.tool.assessed": {
     type: "balrog.tool.assessed";
     created: number;
-    data: { sessionID: string; id: string; reason: string; outcome: string };
+    data: { sessionID: string; id: string; reason: string; outcome: string; capability?: string };
   };
 }
 

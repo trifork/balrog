@@ -150,7 +150,8 @@ export class FileActivityTracker {
     }
     const sessionID = text(envelope.sessionID) ?? text(data?.sessionID);
     if (!sessionID) return undefined;
-    const scope = JSON.stringify([pluginID, sessionID]);
+    // V2 application and workspace plugin instances can split one session's events.
+    const scope = JSON.stringify([envelope.apiVersion === "v2" ? "v2" : pluginID, sessionID]);
     let session = this.sessions.get(scope);
     if (!session) {
       session = {
