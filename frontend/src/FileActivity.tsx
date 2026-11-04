@@ -6,6 +6,7 @@ import { FileInspector } from "./FileInspector";
 import { Icon } from "./Icon";
 import { collectActivity, fileName, promptNumber, type ActivityMode, type ActivityPrompt } from "./file-activity-model";
 import type { ReceivedEvent } from "./useViewer";
+import { subagentsByPrompt, type SubagentStart } from "./subagent-model";
 
 interface Selection {
   session: string;
@@ -15,11 +16,13 @@ interface Selection {
 
 const emptyEventIDs: ReadonlySet<number> = new Set();
 
-export function FileActivity({ events, sessions, selectedSession, activityPrompts, activeEventID, cutoffEventID, onVisibleEventsChange, jumpRequest, onPromptNavigate, onFileEventsChange }: {
+export function FileActivity({ events, sessions, selectedSession, activityPrompts, subagentStarts, onSelectSubagent, activeEventID, cutoffEventID, onVisibleEventsChange, jumpRequest, onPromptNavigate, onFileEventsChange }: {
   events: ReceivedEvent[];
   sessions: SessionSummary[];
   selectedSession: string;
   activityPrompts?: ActivityPrompt[];
+  subagentStarts?: SubagentStart[];
+  onSelectSubagent?: (sessionID: string) => void;
   activeEventID?: number;
   cutoffEventID?: number;
   onVisibleEventsChange?: (events: ReceivedEvent[]) => void;
@@ -39,6 +42,7 @@ export function FileActivity({ events, sessions, selectedSession, activityPrompt
   const traceSummary = useRef<HTMLButtonElement>(null);
   const traceScroll = useRef<HTMLDivElement>(null);
   const prompts = useMemo(() => activityPrompts ?? collectActivity(events, selectedSession), [activityPrompts, events, selectedSession]);
+  const promptSubagents = useMemo(() => subagentsByPrompt(prompts, subagentStarts ?? [], cutoffEventID), [prompts, subagentStarts, cutoffEventID]);
   const current = selection.session === selectedSession ? selection : { session: selectedSession, prompt: null, file: null };
   const selectedPrompt = prompts.find((item) => item.key === current.prompt);
   const overview = !selectedPrompt;
@@ -137,7 +141,7 @@ export function FileActivity({ events, sessions, selectedSession, activityPrompt
         <div className="activity-prompt-scope"><span>{overview ? "Session overview" : `Filtering prompt ${promptNumber(index)}`}</span><button type="button" className="activity-follow" aria-pressed={overview} onClick={resetPrompts}><Icon name={overview ? "layers" : "close"} className="size-3.5" />All prompts</button></div>
       </div>
       <div className="activity-body" data-inspector-open={selectedPrompt ? true : undefined}>
-        <FileHeatmap key={selectedSession} prompts={prompts} paths={paths} mode={mode} selectedKey={selectedPrompt?.key} selectedFile={current.file} sessionTitle={sessionTitle} onSelect={select} />
+        <FileHeatmap key={selectedSession} prompts={prompts} paths={paths} mode={mode} selectedKey={selectedPrompt?.key} selectedFile={current.file} sessionTitle={sessionTitle} onSelect={select} promptSubagents={promptSubagents} onSelectSubagent={onSelectSubagent} />
         {selectedPrompt && <FileInspector prompt={selectedPrompt} index={index} total={prompts.length} selectedFile={current.file} sessionTitle={sessionTitle(selectedPrompt.activity.sessionID)}
           eventCount={relatedIDs.size} mobileOpen={mobileOpen} closeRef={closeRef} onClose={closeInspector}
           onNavigate={(next) => select(prompts[next].key, current.file, undefined, true)} onSelectFile={(file, element) => select(selectedPrompt?.key ?? null, file, element)}

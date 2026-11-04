@@ -4,6 +4,7 @@ import { Icon } from "./Icon";
 import { fileActivityRows, fileName, groupWorkspacePaths, heatLevel, matchesMode, metricLabel, operationCount, promptNumber, type ActivityMode, type ActivityPrompt } from "./file-activity-model";
 import { FileActivityTooltip } from "./FileActivityTooltip";
 import { useStickyHeatmapFolders } from "./useStickyHeatmapFolders";
+import type { SubagentStart } from "./subagent-model";
 
 interface Props {
   prompts: ActivityPrompt[];
@@ -13,20 +14,26 @@ interface Props {
   selectedFile: string | null;
   sessionTitle: (sessionID: string) => string;
   onSelect: (key: string | null, file: string | null, opener: HTMLElement) => void;
+  promptSubagents?: ReadonlyMap<string, SubagentStart[]>;
+  onSelectSubagent?: (sessionID: string) => void;
 }
 
 const noTouches: FileTouch[] = [];
 
-export function FileHeatmap({ prompts, paths, mode, selectedKey, selectedFile, sessionTitle, onSelect }: Props) {
+export function FileHeatmap({ prompts, paths, mode, selectedKey, selectedFile, sessionTitle, onSelect, promptSubagents, onSelectSubagent }: Props) {
   const [collapsed, setCollapsed] = useState(new Set<string>());
   const [hover, setHover] = useState<{ path: string; key: string; rect: DOMRect } | null>(null);
   const [focused, setFocused] = useState<{ path: string; key: string } | null>(null);
   const [fileColumnPinned, setFileColumnPinned] = useState(true);
   const scroll = useRef<HTMLDivElement>(null);
   const table = useRef<HTMLTableElement>(null);
-  const groups = useMemo(() => groupWorkspacePaths(prompts, paths).map((group) => ({
-    ...group, rows: fileActivityRows(group.paths, group.workspace, collapsed),
-  })), [prompts, paths, collapsed]);
+  const groups = useMemo(() => {
+    const workspaceGroups = groupWorkspacePaths(prompts, paths);
+    // Prompt headings (and subagent starts) remain visible even without file operations.
+    return (workspaceGroups.length ? workspaceGroups : [{ workspace: "workspace" as const, label: "In workspace", paths: [] }]).map((group) => ({
+      ...group, rows: fileActivityRows(group.paths, group.workspace, collapsed),
+    }));
+  }, [prompts, paths, collapsed]);
   const stickyInset = useStickyHeatmapFolders(scroll, table, groups);
   const visiblePaths = groups.flatMap((group) => group.rows.flatMap((row) => row.kind === "file" ? [row.path] : []));
   const selectedIndex = prompts.findIndex((prompt) => prompt.key === selectedKey);
@@ -109,7 +116,22 @@ export function FileHeatmap({ prompts, paths, mode, selectedKey, selectedFile, s
                   <th scope="rowgroup"><span className="heatmap-scope-label">{group.label}<small>{group.paths.length} {group.paths.length === 1 ? "file" : "files"}</small></span></th>
                   {prompts.map((prompt, column) => groupIndex === 0
                     ? <th key={prompt.key} scope="col" className="heatmap-prompt-title" title={prompt.activity.text}
-                      aria-label={`Prompt ${promptNumber(column)}: ${prompt.activity.text}`} data-selected={prompt.key === selectedKey || undefined}>Prompt {promptNumber(column)}</th>
+                      aria-label={`Prompt ${promptNumber(column)}: ${prompt.activity.text}`} data-selected={prompt.key === selectedKey || undefined}>Prompt {promptNumber(column)}
+                        {promptSubagents?.get(prompt.key)?.map((start) => {
+                          const url = new URL(window.location.href);
+                          url.pathname = "/";
+                          url.searchParams.set("session", start.sessionID);
+                          return <a key={start.sessionID} href={`${url.pathname}${url.search}${url.hash}`}
+                            className="ml-1 inline-block rounded border border-accent/40 px-1 font-mono text-accent hover:bg-accent/10"
+                            aria-label={`${start.label}: ${sessionTitle(start.sessionID)}, started during Prompt ${promptNumber(column)}`}
+                            title={`${start.label}: ${sessionTitle(start.sessionID)} — ${start.timestamp === undefined ? "start time not recorded" : `started ${new Date(start.timestamp).toLocaleString()}`}`}
+                            onClick={(event) => {
+                              if (!onSelectSubagent || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                              event.preventDefault();
+                              onSelectSubagent(start.sessionID);
+                            }}>{start.label}</a>;
+                        })}
+                      </th>
                     : <td key={prompt.key} data-selected={prompt.key === selectedKey || undefined} />)}
                 </tr>
                 {group.rows.map((row) => {
