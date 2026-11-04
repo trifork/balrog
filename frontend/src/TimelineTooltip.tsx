@@ -68,7 +68,7 @@ export function TimelineTooltip({ anchorRef, message, marker, position, onPointe
         <div><dt className="font-medium text-muted">Reason</dt><dd className="m-0 whitespace-pre-wrap wrap-anywhere">{marker.reason ?? "null"}</dd></div>
         <div><dt className="font-medium text-muted">Outcome</dt><dd className="m-0 whitespace-pre-wrap wrap-anywhere">{marker.outcome ?? "null"}</dd></div>
       </dl>}
-      <pre className="m-0 mt-2 border-t border-line pt-2 font-mono text-[10px] leading-relaxed whitespace-pre-wrap wrap-anywhere text-[#c7c7d0]">{marker.summary}</pre>
+      <p className="m-0 mt-2 border-t border-line pt-2 text-[11px] leading-relaxed whitespace-pre-wrap wrap-anywhere text-[#c7c7d0]">{marker.summary}</p>
       <span className="absolute -bottom-[5px] size-2 rotate-45 border-r border-b border-[#45464d] bg-[#1d1e22]" style={{ left: (placement?.arrowLeft ?? 12) - 4 }} aria-hidden="true" />
     </div>,
     document.body,

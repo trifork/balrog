@@ -191,7 +191,6 @@ export function commandTimeline(source: ReceivedEvent[], evidence: ReceivedEvent
     return {
       ...marker,
       label: execution.command.name ?? "Unknown command",
-      summary: JSON.stringify(execution.command.args, null, 2) ?? "null",
       reason: execution.reason,
       outcome: execution.outcome,
     };

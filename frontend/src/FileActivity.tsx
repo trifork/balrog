@@ -15,7 +15,7 @@ interface Selection {
 
 const emptyEventIDs: ReadonlySet<number> = new Set();
 
-export function FileActivity({ events, sessions, selectedSession, activityPrompts, activeEventID, cutoffEventID, onVisibleEventsChange, jumpRequest, onPromptNavigate }: {
+export function FileActivity({ events, sessions, selectedSession, activityPrompts, activeEventID, cutoffEventID, onVisibleEventsChange, jumpRequest, onPromptNavigate, onFileEventsChange }: {
   events: ReceivedEvent[];
   sessions: SessionSummary[];
   selectedSession: string;
@@ -25,6 +25,7 @@ export function FileActivity({ events, sessions, selectedSession, activityPrompt
   onVisibleEventsChange?: (events: ReceivedEvent[]) => void;
   jumpRequest?: { id: number };
   onPromptNavigate?: (eventID: number | undefined) => void;
+  onFileEventsChange?: (eventIDs: ReadonlySet<number>) => void;
 }) {
   const [selection, setSelection] = useState<Selection>({ session: selectedSession, prompt: null, file: null });
   const [search, setSearch] = useState("");
@@ -51,6 +52,12 @@ export function FileActivity({ events, sessions, selectedSession, activityPrompt
   const eventCount = related ? relatedIDs.size : events.filter((message) => !selectedSession || (message.session?.sessionID ?? message.event.sessionID) === selectedSession).length;
 
   useEffect(() => {
+    const file = current.file;
+    const scopedPrompts = selectedPrompt ? [selectedPrompt] : prompts;
+    onFileEventsChange?.(file ? new Set(scopedPrompts.flatMap((prompt) => [...(prompt.fileEventIDs.get(file) ?? emptyEventIDs)])) : emptyEventIDs);
+  }, [current.file, prompts, selectedPrompt, onFileEventsChange]);
+
+  useEffect(() => {
     setSelection((previous) => previous.session === selectedSession ? previous : { session: selectedSession, prompt: null, file: null });
     setMobileOpen(false);
     setRelatedSession(null);
@@ -62,11 +69,10 @@ export function FileActivity({ events, sessions, selectedSession, activityPrompt
   }, [mobileOpen]);
 
   useLayoutEffect(() => {
-    if (!jumpRequest) return;
+    if (!jumpRequest || !traceOpen) return;
     setRelatedSession(null);
     setMobileOpen(false);
-    setTraceOpen(true);
-  }, [jumpRequest]);
+  }, [jumpRequest, traceOpen]);
 
   useLayoutEffect(() => {
     if (!traceOpen) return;
@@ -103,14 +109,14 @@ export function FileActivity({ events, sessions, selectedSession, activityPrompt
     setAnnouncement("Showing all prompts in the session.");
     onPromptNavigate?.(undefined);
   };
-  const select = (key: string | null, file: string | null, element?: HTMLElement) => {
+  const select = (key: string | null, file: string | null, element?: HTMLElement, navigate = file === null) => {
     if (element) opener.current = element;
     if (key === null && file === null) {
       resetPrompts();
       return;
     }
     setSelection({ session: selectedSession, prompt: key, file });
-    if (key !== current.prompt) onPromptNavigate?.(prompts.find((item) => item.key === key)?.startEventID);
+    if (navigate && key !== current.prompt) onPromptNavigate?.(prompts.find((item) => item.key === key)?.startEventID);
     setRelatedSession(key !== null || related ? selectedSession : null);
     setMobileOpen(key !== null);
     setAnnouncement(`${key === null ? "All prompts" : `Prompt ${promptNumber(prompts.findIndex((item) => item.key === key))}`} selected${file ? `, ${file}` : ""}.`);
@@ -132,7 +138,7 @@ export function FileActivity({ events, sessions, selectedSession, activityPrompt
         <FileHeatmap key={selectedSession} prompts={prompts} paths={paths} mode={mode} selectedKey={selectedPrompt?.key} selectedFile={current.file} sessionTitle={sessionTitle} onSelect={select} />
         {selectedPrompt && <FileInspector prompt={selectedPrompt} index={index} total={prompts.length} selectedFile={current.file} sessionTitle={sessionTitle(selectedPrompt.activity.sessionID)}
           eventCount={relatedIDs.size} mobileOpen={mobileOpen} closeRef={closeRef} onClose={closeInspector}
-          onNavigate={(next) => select(prompts[next].key, current.file)} onSelectFile={(file, element) => select(selectedPrompt?.key ?? null, file, element)}
+          onNavigate={(next) => select(prompts[next].key, current.file, undefined, true)} onSelectFile={(file, element) => select(selectedPrompt?.key ?? null, file, element)}
           onInspect={() => {
             setRelatedSession(selectedSession);
             setTraceOpen(true);
