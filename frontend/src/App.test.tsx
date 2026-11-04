@@ -72,10 +72,10 @@ test.each(["", "?session=s1&keep=yes"])("shows all three view tabs while preserv
   window.history.replaceState(null, "", `/${search}`);
   render(<App />);
   const navigation = within(screen.getByRole("tablist", { name: "Views" }));
-  expect(navigation.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Activity map", "Capabilities", "Reasons"]);
+  expect(navigation.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Activity map", "Tool usage", "Reasons"]);
   expect(navigation.getByRole("tab", { name: "Activity map", selected: true }).getAttribute("href")).toBe(`/${search}`);
   expect(navigation.getByRole("tab", { name: "Reasons", selected: false }).getAttribute("href")).toBe(`/reason${search}`);
-  expect(navigation.getByRole("tab", { name: "Capabilities", selected: false }).getAttribute("href")).toBe(`/capabilities${search}`);
+  expect(navigation.getByRole("tab", { name: "Tool usage", selected: false }).getAttribute("href")).toBe(`/capabilities${search}`);
 });
 
 test("view tabs switch content in place and preserve session selection and history", async () => {
@@ -92,16 +92,16 @@ test("view tabs switch content in place and preserve session selection and histo
     expect(screen.getByRole("tab", { name: "First session" }).getAttribute("aria-selected")).toBe("true");
   };
   expectView("Activity map", "/");
-  await user.click(navigation.getByRole("tab", { name: "Capabilities" }));
-  expectView("Capabilities", "/capabilities");
-  expect(screen.getByRole("table", { name: "Attempted capabilities" })).toBeTruthy();
+  await user.click(navigation.getByRole("tab", { name: "Tool usage" }));
+  expectView("Tool usage", "/capabilities");
+  expect(screen.getByRole("table", { name: "Tool usage" })).toBeTruthy();
   expect(screen.queryByRole("region", { name: "File activity heatmap" })).toBeNull();
   expect(screen.queryByRole("table", { name: "File access reasons" })).toBeNull();
   expect(screen.queryByRole("slider")).toBeNull();
   await user.click(navigation.getByRole("tab", { name: "Reasons" }));
   expectView("Reasons", "/reason");
   expect(screen.getByRole("table", { name: "File access reasons" })).toBeTruthy();
-  expect(screen.queryByRole("table", { name: "Attempted capabilities" })).toBeNull();
+  expect(screen.queryByRole("table", { name: "Tool usage" })).toBeNull();
   await user.click(navigation.getByRole("tab", { name: "Activity map" }));
   expectView("Activity map", "/");
   expect(screen.getByRole("region", { name: "File activity heatmap" })).toBeTruthy();
@@ -113,7 +113,7 @@ test("view tabs switch content in place and preserve session selection and histo
     window.history.replaceState(null, "", "/capabilities?session=s1&keep=yes");
     window.dispatchEvent(new PopStateEvent("popstate"));
   });
-  expectView("Capabilities", "/capabilities");
+  expectView("Tool usage", "/capabilities");
   act(() => {
     window.history.replaceState(null, "", "/reason?session=s1&keep=yes");
     window.dispatchEvent(new PopStateEvent("popstate"));
@@ -134,7 +134,7 @@ test("view tabs support arrow keys, Home, End, Space and a single tab stop", asy
   };
   navigation.getByRole("tab", { name: "Activity map" }).focus();
   await user.keyboard("{ArrowRight}");
-  expectActive("Capabilities");
+  expectActive("Tool usage");
   await user.keyboard("{ArrowRight}");
   expectActive("Reasons");
   await user.keyboard("{ArrowRight}");
@@ -148,7 +148,7 @@ test("view tabs support arrow keys, Home, End, Space and a single tab stop", asy
   await user.keyboard(" ");
   expectActive("Reasons");
   await user.keyboard("{ArrowLeft}{Enter}");
-  expectActive("Capabilities");
+  expectActive("Tool usage");
 });
 
 test("/reason shows the simple reason table, prompt toggles and file search, with session selection", async () => {
@@ -188,14 +188,15 @@ test("/reason shows the simple reason table, prompt toggles and file search, wit
   expect(screen.queryByRole("table", { name: "Reason explanations" })).toBeNull();
 });
 
-test("/capabilities shows only the capability table and keeps session selection and view links", async () => {
+test("/capabilities shows the Tool usage table and keeps session selection and view links", async () => {
   window.history.replaceState(null, "", "/capabilities?session=s1&keep=yes");
   state.events = [command(1), command(2, "s2")];
   const user = userEvent.setup();
   render(<App />);
-  const attempts = () => within(screen.getByRole("table", { name: "Attempted capabilities" }));
+  const attempts = () => within(screen.getByRole("table", { name: "Tool usage" }));
   expect(attempts().getAllByRole("row")).toHaveLength(2);
-  expect(attempts().getByText("Run shell command")).toBeTruthy();
+  expect(attempts().getByRole("rowheader", { name: "shell" })).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Tool usage" })).toBeTruthy();
   expect(attempts().queryByText("Run the tests.")).toBeNull();
   expect(screen.queryByRole("button", { name: /event stream/ })).toBeNull();
   expect(screen.queryByRole("slider")).toBeNull();
@@ -213,7 +214,7 @@ test("/capabilities shows only the capability table and keeps session selection 
     window.dispatchEvent(new PopStateEvent("popstate"));
   });
   expect(screen.getByRole("table", { name: "File access reasons" })).toBeTruthy();
-  expect(screen.queryByRole("table", { name: "Attempted capabilities" })).toBeNull();
+  expect(screen.queryByRole("table", { name: "Tool usage" })).toBeNull();
 });
 
 test.each(["/reason", "/capabilities"])("%s supports exclusive clicks and independent Shift-click session toggles", async (path) => {
@@ -231,7 +232,8 @@ test.each(["/reason", "/capabilities"])("%s supports exclusive clicks and indepe
   const third = screen.getByRole("tab", { name: "Third session" });
   const choices = () => [first, second, third].map((tab) => tab.getAttribute("aria-selected"));
   const visiblePrompts = () => within(screen.getByRole("group", { name: "Prompts" })).getAllByRole("button").map((button) => button.textContent);
-  const rows = () => within(screen.getByRole("table")).getAllByRole("row").slice(1);
+  const rows = () => within(screen.getByRole("table")).getAllByRole("row").slice(1)
+    .filter((row) => path !== "/reason" || row.querySelector('th[scope="row"]'));
   fireEvent.click(first, { shiftKey: true });
   expect(choices()).toEqual(["false", "true", "true"]);
   expect(visiblePrompts()).toEqual(["Prompt 01Prompt for s2", "Prompt 02Prompt for s3"]);
@@ -244,7 +246,7 @@ test.each(["/reason", "/capabilities"])("%s supports exclusive clicks and indepe
   expect(rows()).toHaveLength(2);
   expect(new URL(window.location.href).searchParams.getAll("session")).toEqual(["s1", "s2"]);
   expect(new URL(window.location.href).searchParams.get("keep")).toBe("yes");
-  expect(screen.getByRole("tab", { name: path === "/reason" ? "Capabilities" : "Reasons" }).getAttribute("href")).toContain("session=s1&session=s2");
+  expect(screen.getByRole("tab", { name: path === "/reason" ? "Tool usage" : "Reasons" }).getAttribute("href")).toContain("session=s1&session=s2");
   fireEvent.click(first);
   expect(choices()).toEqual(["true", "false", "false"]);
   fireEvent.click(first, { shiftKey: true });

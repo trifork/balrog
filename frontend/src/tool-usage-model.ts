@@ -82,7 +82,7 @@ function result(attempt: Attempt) {
   return { status: "ok", text: "ok" };
 }
 
-export function capabilities(events: ViewerMessage[], selectedSession: string) {
+export function toolUsage(events: ViewerMessage[], selectedSession: string) {
   const attempts = new Map<string, Attempt>();
   for (const message of events) {
     const execution = message.execution;
@@ -113,11 +113,11 @@ export function capabilities(events: ViewerMessage[], selectedSession: string) {
     });
 }
 
-export function groupCapabilities(attempts: ReturnType<typeof capabilities>) {
-  const groups = new Map<string, { capability: string; invocations: typeof attempts }>();
+export function groupToolUsage(attempts: ReturnType<typeof toolUsage>) {
+  const groups = new Map<string, { tool: string; invocations: typeof attempts }>();
   for (const attempt of attempts) {
-    const key = attempt.capability.toLowerCase();
-    const group = groups.get(key) ?? { capability: attempt.capability, invocations: [] };
+    const key = attempt.tool;
+    const group = groups.get(key) ?? { tool: attempt.tool, invocations: [] };
     group.invocations.push(attempt);
     groups.set(key, group);
   }

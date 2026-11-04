@@ -256,7 +256,7 @@ any recorded event without inspecting raw tool arguments. These replace the old
 
 The dashboard centers **File heatmap**: a live heatmap with observed
 files as rows and recorded prompts as columns. Three persistent view tabs below
-the header switch between **Activity map**, **Capabilities**, and **Reasons**,
+the header switch between **Activity map**, **Tool usage**, and **Reasons**,
 showing one view at a time without reconnecting the event stream. The selected
 view is highlighted. Arrow keys, Home, and End navigate the view tabs, and direct
 URLs and browser Back/Forward navigation continue to work. Switching views
@@ -385,8 +385,17 @@ when replaying a SQLite recording.
 ### File access reasons
 
 Open `/reason` or choose the **Reasons** tab for a simpler file/reason table.
-Each file lists the distinct reasons from enabled prompts. Prompt toggles at the
-bottom show their recorded text. Click to select only one prompt; Shift-click to
+An introductory line explains that the view shows recorded reasons for accessing
+each file across the selected prompts.
+Each file lists the distinct reasons from enabled prompts. Files use the same
+grouping as the Activity map:
+**Outside workspace** first, a collapsible folder tree for **In workspace**, and
+**Workspace unknown** when recorded context is insufficient or conflicting.
+External and unknown files retain full-folder-path groups. Folder counts reflect
+matching files in the selected prompts; search matches full paths. File and folder
+names remain on one line, with horizontal scrolling for long paths.
+Prompt toggles at the bottom show their recorded text. Click to select only one
+prompt; Shift-click to
 toggle a prompt without changing the others. All prompts are enabled initially.
 Hover or focus a reason to highlight its matching file entries and associated
 prompts. Click to pin the highlight. Use **Clear highlight** or Escape to clear
@@ -397,24 +406,19 @@ Reasons belong to individual calls, not every access to the same file. Calls
 after a `/retro` snapshot cutoff, including the retrospective's own file reads,
 remain unassessed unless a later retrospective includes them.
 
-### Attempted capabilities
+### Tool usage
 
-Open `/capabilities` or choose the **Capabilities** tab for a simple table
-of technical capabilities, tool calls, and results. Session tabs select the recording
-to inspect. Invocations are grouped under their capability, with one result per
-call. Groups with failures appear first, and failed invocations appear first
+Choose the **Tool usage** tab for a table of recorded tool calls and results.
+The existing `/capabilities` URL remains supported. An introductory line explains
+that calls are grouped by their recorded tool name, such as **read**, **grep**,
+or **shell**, rather than their assessed capability. Full tool names are retained
+so namespaced tools stay distinct. Session tabs select the recording to inspect.
+Each tool group has one result per call. Groups with failures appear first, and failed invocations appear first
 within each group. Prompt selection works like `/reason`: click to select only
 one prompt, or Shift-click to toggle it without changing the others.
-A capability describes the operation, such as **Read file** or **Get status from
-production Kubernetes deployment**. Its reason describes why the agent performed
-it, such as finding lifecycle documentation. The same technical operation keeps
-the same capability even when its reason changes.
-
-Capability labels come from a separate `/retro` assessment field, never from
-reasons or descriptions. Unassessed calls use basic tool-level labels, such as
-**Read file** or **Run shell command**. Unsupported tools show **Unknown capability**.
-Rerun `/retro` after reloading the updated skill to populate richer labels in older
-recordings. Original calls and results remain unchanged.
+Reasons and `/retro` capability assessments do not change tool grouping.
+Tools without a recorded name show **Unknown tool**. Original calls and results
+remain unchanged.
 
 Completed calls show **ok** or a recorded error. Nonzero command exit codes and
 explicit error results count as failures even when the tool itself returns
@@ -422,7 +426,8 @@ successfully. Calls without a completion show **Pending**. This describes record
 execution, not independent proof that the broader task was accomplished.
 The assessment POST endpoint accepts an optional non-empty `capability` string
 alongside `reason` and `outcome`. Legacy requests remain valid; omitting the field
-preserves an existing capability label. Labels persist on replay and update live.
+preserves an existing capability label. These assessments remain recorded but
+do not replace tool names in the Tool usage view.
 
 ### Approve sensitive file reads
 

@@ -16,7 +16,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 12px;
-    margin-bottom: 16px;
+    margin-bottom: 8px;
     flex-shrink: 0;
   }
   .reason-toolbar h1 {
@@ -62,19 +62,69 @@
     background: var(--color-frame);
     border-bottom: 1px solid var(--color-line) !important;
   }
-  .reason-map th:first-child {
+  .reason-map th:first-child:not([colspan]) {
+    width: 260px;
+    min-width: 180px;
+    background: var(--color-frame);
+    border-right: 1px solid var(--color-line);
+  }
+  .reason-map-scroll[data-file-column-pinned] .reason-map th:first-child:not([colspan]) {
     position: sticky;
     z-index: 1;
     left: 0;
-    width: 260px;
-    min-width: 180px;
-    max-width: 300px;
-    background: var(--color-frame);
-    border-right: 1px solid var(--color-line);
-    overflow-wrap: anywhere;
   }
-  .reason-map thead th:first-child {
+  .reason-map-scroll[data-file-column-pinned] .reason-map thead th:first-child {
     z-index: 3;
+  }
+  .reason-map .reason-scope th {
+    background: var(--color-panel);
+    font-family: var(--font-sans);
+  }
+  .reason-scope-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #c3beb4;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .reason-scope-label small {
+    color: var(--color-muted);
+    font-size: 9px;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+  .reason-map .reason-folder th {
+    padding: 0;
+  }
+  .reason-folder-toggle {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    min-width: max-content;
+    padding: 9px 12px 6px calc(12px + var(--tree-depth, 0) * 16px);
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--color-muted);
+    text-align: left;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .reason-folder-toggle:hover { color: var(--color-ink); }
+  .reason-folder-toggle svg, .reason-folder-toggle small { flex-shrink: 0; }
+  .reason-folder-toggle small { font-size: 9px; }
+  .reason-folder-toggle[aria-expanded="false"] .folder-chevron { transform: rotate(-90deg); }
+  .reason-file-name {
+    display: block;
+    padding-left: calc(var(--tree-depth, 0) * 16px);
+    white-space: nowrap;
   }
   .reason-map tbody th {
     font-family: var(--font-mono);
@@ -200,7 +250,7 @@
   }
   @media (max-width: 760px) {
     .reason-workspace { padding: 16px 12px 28px; }
-    .reason-map th:first-child { min-width: 140px; max-width: 180px; }
+    .reason-map th:first-child:not([colspan]) { min-width: 140px; }
     .reason-workspace th, .reason-workspace td { padding: 8px; }
   }
 }

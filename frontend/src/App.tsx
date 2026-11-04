@@ -9,11 +9,11 @@ import { ReadWarning } from "./ReadWarning";
 import { Timeline } from "./Timeline";
 import { collectActivity, collectHeatmapActivity } from "./file-activity-model";
 import { ReasonMap } from "./ReasonMap";
-import { Capabilities } from "./Capabilities";
+import { ToolUsage } from "./ToolUsage";
 
 const views = [
   { key: "activity", path: "/", title: "Activity map" },
-  { key: "capabilities", path: "/capabilities", title: "Capabilities" },
+  { key: "capabilities", path: "/capabilities", title: "Tool usage" },
   { key: "reason", path: "/reason", title: "Reasons" },
 ] as const;
 
@@ -173,7 +173,7 @@ export function App() {
           <PermissionRequests requests={permissions} sessions={sessions} live={status === "live"} onReply={replyPermission} />
         </div>}
         {reasonsPage ? <ReasonMap key={selectionKey} events={simpleEvents} sessions={sessions} selectedSession={selected} sessionLabel={sessionLabel} />
-          : capabilitiesPage ? <Capabilities key={selectionKey} events={simpleEvents} sessions={sessions} selectedSession={selected} sessionLabel={sessionLabel} />
+          : capabilitiesPage ? <ToolUsage key={selectionKey} events={simpleEvents} sessions={sessions} selectedSession={selected} sessionLabel={sessionLabel} />
           : <FileActivity events={events} sessions={sessions} selectedSession={selected} activityPrompts={activityPrompts} activeEventID={activeEventID} cutoffEventID={cutoffEventID} jumpRequest={jumpRequest} onPromptNavigate={navigatePrompt} onFileEventsChange={setHighlightedEventIDs} />}
         </div>
       </main>
