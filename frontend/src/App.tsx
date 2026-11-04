@@ -18,6 +18,7 @@ export function App() {
   const [followingLive, setFollowingLive] = useState(true);
   const [jumpRequest, setJumpRequest] = useState<{ id: number }>();
   const [promptJump, setPromptJump] = useState<{ id: number }>();
+  const [highlightedEventIDs, setHighlightedEventIDs] = useState<ReadonlySet<number>>(() => new Set());
   const prompts = useMemo(() => collectActivity(events, selected), [events, selected]);
   const cutoffEventID = followingLive ? undefined : activeEventID ?? 0;
   const activityPrompts = useMemo(() => cutoffEventID === undefined ? prompts
@@ -103,9 +104,9 @@ export function App() {
         {permissions.length > 0 && <div className="max-h-[35dvh] shrink-0 overflow-auto px-7 pt-4 [&>.read-approvals]:mb-0 max-[760px]:px-3">
           <PermissionRequests requests={permissions} sessions={sessions} live={status === "live"} onReply={replyPermission} />
         </div>}
-        <FileActivity events={events} sessions={sessions} selectedSession={selected} activityPrompts={activityPrompts} activeEventID={activeEventID} cutoffEventID={cutoffEventID} jumpRequest={jumpRequest} onPromptNavigate={navigatePrompt} />
+        <FileActivity events={events} sessions={sessions} selectedSession={selected} activityPrompts={activityPrompts} activeEventID={activeEventID} cutoffEventID={cutoffEventID} jumpRequest={jumpRequest} onPromptNavigate={navigatePrompt} onFileEventsChange={setHighlightedEventIDs} />
       </main>
-      <footer className="viewer-timeline min-w-0 border-t border-line bg-frame" aria-label="Bottom bar"><Timeline events={timelineEvents} evidenceEvents={events} prompts={prompts} activeEventID={activeEventID} centerRequest={promptJump} onSelect={scrubToEvent} onActivate={inspectEvent} followingLive={followingLive} onToggleLive={toggleLive} /></footer>
+      <footer className="viewer-timeline min-w-0 border-t border-line bg-frame" aria-label="Bottom bar"><Timeline events={timelineEvents} evidenceEvents={events} prompts={prompts} activeEventID={activeEventID} centerRequest={promptJump} highlightedEventIDs={highlightedEventIDs} onSelect={scrubToEvent} onActivate={inspectEvent} followingLive={followingLive} onToggleLive={toggleLive} /></footer>
       <ReadWarning requests={permissions} live={status === "live"} />
     </div>
   );
