@@ -341,8 +341,8 @@ Expand **Event stream** beneath the heatmap for the full event feed, or choose
 selected prompt or file. **Show all events** clears that scope. Search event
 content or commands and filter by event type to narrow the feed further.
 Opening the stream and following live events keep the search and filters in
-view above the newest events; explicit timeline jumps center the selected event
-when the stream is open, but never open it automatically.
+view above the newest events. Explicit event activation from the timeline opens
+the stream and centers the selected event; ordinary scrubbing does not open it.
 Event
 content starts collapsed; use **Expand all** to show visible event content or
 **Collapse all** to compact it again. New events inherit the current collapse
@@ -355,9 +355,12 @@ adds amber borders to its related timeline commands within the current prompt
 scope; the session overview includes all prompts. Unrelated commands stay visible,
 and clearing the file selection removes the borders. File clicks leave the playback
 handle in place instead of jumping to the prompt. Timeline tooltips show readable
-event summaries rather than raw command arguments. Click an event, or activate it with Enter
-or Space, to pause playback at that point without opening the stream. Use
-**Expand event stream** or **Inspect related events** to open it. Dragging, scrolling,
+event summaries rather than raw command arguments. Choose **Open in event stream**
+below a tooltip summary to pause playback at that event, open the stream, and center
+its card. The button works for both prompts and commands, stays available while
+hovered or focused, and supports Enter and Space. Explicitly activating a timeline
+marker also opens its event. Hovering alone never changes playback or opens the stream.
+Use **Expand event stream** or **Inspect related events** to open the feed separately. Dragging, scrolling,
 prompt-navigation buttons, keyboard navigation, and pausing live playback change
 the playback position without opening the stream. The heatmap and inspector show
 recorded file activity up to that position, including the pending, failed, and

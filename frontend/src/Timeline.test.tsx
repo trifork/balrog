@@ -465,3 +465,109 @@ test("hover details stay open while the pointer moves into the scrollable toolti
   act(() => vi.advanceTimersByTime(200));
   expect(screen.queryByRole("tooltip")).toBeNull();
 });
+
+test.each(["{Enter}", " "])("tooltip action stays available while focused and activates with %s", async (key) => {
+  vi.useFakeTimers();
+  const onSelect = vi.fn();
+  const onActivate = vi.fn();
+  render(<Timeline events={scrubEvents()} onSelect={onSelect} onActivate={onActivate} />);
+  const marker = screen.getByRole("button", { name: /^Jump to command 1:/ });
+  fireEvent.pointerEnter(marker, { pointerType: "mouse" });
+  fireEvent.pointerLeave(marker, { pointerType: "mouse" });
+  const action = screen.getByRole("button", { name: "Open in event stream" });
+  act(() => action.focus());
+  fireEvent.pointerEnter(action, { pointerType: "mouse" });
+  fireEvent.pointerLeave(action, { pointerType: "mouse" });
+  act(() => vi.advanceTimersByTime(2_000));
+  expect(action.isConnected).toBe(true);
+  expect(document.activeElement).toBe(action);
+  vi.useRealTimers();
+  const user = userEvent.setup();
+  await user.keyboard(key);
+  expect(onSelect).toHaveBeenLastCalledWith(1);
+  expect(onActivate).toHaveBeenCalledExactlyOnceWith(1);
+  expect(screen.queryByRole("tooltip")).toBeNull();
+});
+
+test.each(["marker", "scrubber"])("tooltip action keeps focus when the pointer leaves its %s afterward", (target) => {
+  vi.useFakeTimers();
+  const onActivate = vi.fn();
+  render(<Timeline events={scrubEvents()} onSelect={vi.fn()} onActivate={onActivate} />);
+  const anchor = target === "marker" ? screen.getByRole("button", { name: /^Jump to command 1:/ }) : screen.getByRole("slider");
+  fireEvent.pointerEnter(anchor, { pointerType: "mouse" });
+  const action = screen.getByRole("button", { name: "Open in event stream" });
+  act(() => action.focus());
+  fireEvent.pointerLeave(anchor, { pointerType: "mouse" });
+  act(() => vi.advanceTimersByTime(200));
+  expect(action.isConnected).toBe(true);
+  expect(document.activeElement).toBe(action);
+  fireEvent.click(action);
+  expect(onActivate).toHaveBeenCalledExactlyOnceWith(target === "marker" ? 1 : 2);
+});
+
+test("tooltip action follows the scrubber in Tab order even when related overflow controls are present", async () => {
+  vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(400);
+  const user = userEvent.setup();
+  const onActivate = vi.fn();
+  render(<Timeline events={manyEvents(1_000)} activeEventID={500} followingLive={false} highlightedEventIDs={new Set([10, 950])} onSelect={vi.fn()} onActivate={onActivate} />);
+  expect(screen.getAllByRole("button", { name: /^Show 1 related command/ })).toHaveLength(2);
+  const scrubber = screen.getByRole("slider");
+  act(() => scrubber.focus());
+  fireEvent.pointerEnter(scrubber, { pointerType: "mouse" });
+  const action = screen.getByRole("button", { name: "Open in event stream" });
+  await user.tab();
+  expect(document.activeElement).toBe(action);
+  await user.tab({ shift: true });
+  expect(document.activeElement).toBe(scrubber);
+  await user.tab();
+  expect(document.activeElement).toBe(action);
+  await user.keyboard("{Enter}");
+  expect(onActivate).toHaveBeenCalledExactlyOnceWith(500);
+});
+
+test("tooltip action stays available after scrubbing while the pointer is over it", () => {
+  vi.useFakeTimers();
+  const onActivate = vi.fn();
+  const events = scrubEvents();
+  function Harness() {
+    const [active, setActive] = useState(2);
+    return <Timeline events={events} activeEventID={active} followingLive={false} onSelect={setActive} onActivate={onActivate} />;
+  }
+  render(<Harness />);
+  fireEvent.keyDown(screen.getByRole("slider"), { key: "Home" });
+  const action = screen.getByRole("button", { name: "Open in event stream" });
+  expect(action.closest('[role="tooltip"]')).toBeNull();
+  fireEvent.pointerEnter(action, { pointerType: "mouse" });
+  act(() => vi.advanceTimersByTime(2_000));
+  expect(action.isConnected).toBe(true);
+  fireEvent.click(action);
+  expect(onActivate).toHaveBeenCalledExactlyOnceWith(1);
+});
+
+test("tooltip action stays open when focus leaves but the pointer is still over it", () => {
+  vi.useFakeTimers();
+  render(<><button type="button">Elsewhere</button><Timeline events={scrubEvents()} onSelect={vi.fn()} onActivate={vi.fn()} /></>);
+  fireEvent.pointerEnter(screen.getByRole("button", { name: /^Jump to command 1:/ }), { pointerType: "mouse" });
+  const action = screen.getByRole("button", { name: "Open in event stream" });
+  fireEvent.pointerEnter(action, { pointerType: "mouse" });
+  act(() => action.focus());
+  act(() => screen.getByRole("button", { name: "Elsewhere" }).focus());
+  act(() => vi.advanceTimersByTime(2_000));
+  expect(action.isConnected).toBe(true);
+  fireEvent.pointerLeave(action, { pointerType: "mouse" });
+  act(() => vi.advanceTimersByTime(200));
+  expect(action.isConnected).toBe(false);
+});
+
+test("tooltip action opens prompt markers and is omitted without a stream activation callback", () => {
+  const onActivate = vi.fn();
+  const events = [message(1, "session.inbox.delivered", first)];
+  const { rerender } = render(<Timeline events={events} onSelect={vi.fn()} onActivate={onActivate} />);
+  fireEvent.pointerEnter(screen.getByRole("button", { name: /^Jump to prompt/ }), { pointerType: "mouse" });
+  fireEvent.click(screen.getByRole("button", { name: "Open in event stream" }));
+  expect(onActivate).toHaveBeenCalledExactlyOnceWith(1);
+  rerender(<Timeline events={events} onSelect={vi.fn()} />);
+  fireEvent.pointerEnter(screen.getByRole("button", { name: /^Jump to prompt/ }), { pointerType: "mouse" });
+  expect(screen.getByRole("tooltip")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Open in event stream" })).toBeNull();
+});

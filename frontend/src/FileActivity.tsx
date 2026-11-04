@@ -69,10 +69,11 @@ export function FileActivity({ events, sessions, selectedSession, activityPrompt
   }, [mobileOpen]);
 
   useLayoutEffect(() => {
-    if (!jumpRequest || !traceOpen) return;
+    if (!jumpRequest) return;
+    setTraceOpen(true);
     setRelatedSession(null);
     setMobileOpen(false);
-  }, [jumpRequest, traceOpen]);
+  }, [jumpRequest]);
 
   useLayoutEffect(() => {
     if (!traceOpen) return;
@@ -87,6 +88,7 @@ export function FileActivity({ events, sessions, selectedSession, activityPrompt
       const bounds = scroller.getBoundingClientRect();
       const rect = card.getBoundingClientRect();
       scroller.scrollTop += rect.top - bounds.top - (bounds.height - rect.height) / 2;
+      traceSummary.current?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
   }, [jumpRequest, traceOpen, related]);

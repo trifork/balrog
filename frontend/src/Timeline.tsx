@@ -29,6 +29,7 @@ export function Timeline({ events: sourceEvents, evidenceEvents = sourceEvents, 
   const [hoveredEventID, setHoveredEventID] = useState<number>();
   const [focusedEventID, setFocusedEventID] = useState<number>();
   const hoverAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeEvent = events[activeIndex];
   const activeFileRelated = Boolean(activeEvent && !markers[activeIndex].isPrompt && highlightedEventIDs?.has(activeEvent.id));
@@ -80,7 +81,14 @@ export function Timeline({ events: sourceEvents, evidenceEvents = sourceEvents, 
 
   const leaveEvent = (id: number) => {
     keepHover();
-    hoverTimerRef.current = setTimeout(() => setHoveredEventID((previous) => previous === id ? undefined : previous), 150);
+    hoverTimerRef.current = setTimeout(() => {
+      if (!tooltipRef.current?.contains(document.activeElement)) setHoveredEventID((previous) => previous === id ? undefined : previous);
+    }, 150);
+  };
+
+  const keepTooltipOpen = () => {
+    const anchor = hoveredIndex >= 0 ? hoverAnchorRef.current : handleRef.current;
+    if (tooltipEvent && anchor) hoverEvent(tooltipEvent.id, anchor);
   };
 
   const navigateKey = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -109,7 +117,7 @@ export function Timeline({ events: sourceEvents, evidenceEvents = sourceEvents, 
     <div className="group/timeline flex h-full min-w-0 items-center gap-3 px-4 max-[760px]:gap-2 max-[760px]:px-3 max-[480px]:px-2.5" data-dragging={dragging} role="group" aria-label="Event timeline">
       <span className="w-16 shrink-0 font-mono text-[9px] tracking-[1.4px] text-muted uppercase max-[760px]:hidden">{dragging && scrubSpeed < 1 ? `Fine ${Math.round(scrubSpeed * 100)}%` : "Timeline"}</span>
       <TimelineControls previousPrompt={previousPrompt} nextPrompt={nextPrompt} followingLive={followingLive} hasEvents={events.length > 0} onNavigate={(index) => { setHoveredEventID(undefined); jumpToIndex(index, true); }} onToggleLive={onToggleLive ? toggleLive : undefined} />
-      <span id="timeline-instructions" className="sr-only">Amber borders mark commands related to the selected file in the current prompt scope. Amber edge indicators count related commands outside the visible timeline; activate one to reveal them without changing playback or file selection. Hover a prompt for its summary or a command for its reason. Click an event or press Enter or Space to pause playback at that point and update the heatmap without opening the event stream. Expand Event stream separately to inspect events. Drag anywhere to scrub. Release and re-grab to continue from the current event. Drag vertically away from the bar for finer control. Use arrow keys to step or Home and End to jump. Scrubbing pauses playback; use Go live to resume.</span>
+      <span id="timeline-instructions" className="sr-only">Amber borders mark commands related to the selected file in the current prompt scope. Amber edge indicators count related commands outside the visible timeline; activate one to reveal them without changing playback or file selection. Hover a prompt for its summary or a command for its reason. Choose Open in event stream in the tooltip to pause playback and inspect that event. Click an event or press Enter or Space to activate it. Tab from the scrubber to reach the tooltip action. Expand Event stream separately to inspect the feed. Drag anywhere to scrub without opening the stream. Release and re-grab to continue from the current event. Drag vertically away from the bar for finer control. Use arrow keys to step or Home and End to jump. Scrubbing pauses playback; use Go live to resume.</span>
       <div className="relative isolate h-full min-w-0 flex-1">
         <div ref={viewportRef} className="h-full w-full cursor-ew-resize touch-none overflow-x-auto overflow-y-hidden overscroll-contain select-none group-data-[dragging=true]/timeline:cursor-grabbing [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           onFocusCapture={(event) => { if (event.target instanceof HTMLElement) setFocusedEventID(Number(event.target.closest<HTMLElement>("[data-event-id]")?.dataset.eventId)); }}
@@ -149,6 +157,8 @@ export function Timeline({ events: sourceEvents, evidenceEvents = sourceEvents, 
             </button>
           </div> : <div className="flex h-full items-center gap-3"><div className="h-px flex-1 bg-line" /><span className="text-[10px] text-muted">No commands</span><div className="h-px flex-1 bg-line" /></div>}
         </div>
+        {tooltipEvent && <TimelineTooltip tooltipRef={tooltipRef} anchorRef={hoveredIndex >= 0 ? hoverAnchorRef : handleRef} message={tooltipEvent} marker={markers[tooltipIndex]} position={layout.positions[tooltipIndex]} onPointerEnter={keepTooltipOpen} onPointerLeave={() => leaveEvent(tooltipEvent.id)}
+          onOpenEvent={onActivate ? () => { activateIndex(tooltipIndex); keepHover(); setHoveredEventID(undefined); hideTooltip(); } : undefined} />}
         {events.length > 0 && <>
           <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 max-w-[20%] bg-linear-to-r from-frame to-transparent" aria-hidden="true" />
           <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 max-w-[20%] bg-linear-to-l from-frame to-transparent opacity-0 transition-opacity duration-150 data-[visible=true]:opacity-100 motion-reduce:transition-none" data-visible={latestOutside} aria-hidden="true" />
@@ -169,7 +179,6 @@ export function Timeline({ events: sourceEvents, evidenceEvents = sourceEvents, 
         {activeEvent && <time className="text-[#c4c4ce] max-[1000px]:hidden" dateTime={new Date(activeEvent.receivedAt).toISOString()}>{new Date(activeEvent.receivedAt).toLocaleTimeString()}</time>}
         <span><span className={activeEvent ? "text-accent" : ""}>{activeEvent ? (activeIndex + 1).toLocaleString() : "0"}</span><span className="px-1 text-[#575862]">/</span>{events.length.toLocaleString()}</span>
       </div>
-      {tooltipEvent && <TimelineTooltip anchorRef={hoveredIndex >= 0 ? hoverAnchorRef : handleRef} message={tooltipEvent} marker={markers[tooltipIndex]} position={layout.positions[tooltipIndex]} onPointerEnter={keepHover} onPointerLeave={() => leaveEvent(tooltipEvent.id)} />}
     </div>
   );
 }

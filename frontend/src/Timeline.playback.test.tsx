@@ -57,6 +57,63 @@ function scrollPlayback() {
 const fileCell = () => within(screen.getByRole("table", { name: "File operations by prompt" }))
   .getByRole("button", { name: /^src\/app.ts, prompt 01:/ });
 
+test("tooltip action opens and centers the hovered event instead of the current live event", async () => {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    return new DOMRect(0, this.id.startsWith("event-") ? 400 : 20, 400, this.classList.contains("activity-trace-scroll") ? 400 : 100);
+  });
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => { callback(0); return 1; });
+  vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  const user = userEvent.setup();
+  const { container } = render(<App />);
+  fireEvent.pointerEnter(screen.getByRole("button", { name: /^Jump to command 95:/ }), { pointerType: "mouse" });
+  expect(screen.getByRole("slider").getAttribute("aria-valuenow")).toBe("100");
+  expect(screen.getByRole("button", { name: "Expand event stream" })).toBeTruthy();
+  await user.click(screen.getByRole("button", { name: "Open in event stream" }));
+  expect(screen.getByRole("slider").getAttribute("aria-valuenow")).toBe("95");
+  expect(screen.getByRole("button", { name: "Resume live playback" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Collapse event stream" })).toBeTruthy();
+  const cards = within(screen.getByRole("region", { name: "Session events" })).getAllByRole("article");
+  expect(cards[0].id).toBe("event-95");
+  expect(cards[0].getAttribute("data-active")).toBe("true");
+  expect(container.querySelector<HTMLElement>(".activity-trace-scroll")!.scrollTop).toBe(230);
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Collapse event stream" }));
+  expect(screen.queryByRole("tooltip")).toBeNull();
+});
+
+test("tooltip action is reachable by Tab from the timeline and opens the stream with Enter", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  act(() => screen.getByRole("slider").focus());
+  await user.keyboard("{ArrowLeft}");
+  await user.tab();
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Open in event stream" }));
+  await user.keyboard("{Enter}");
+  expect(screen.getByRole("button", { name: "Collapse event stream" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Resume live playback" })).toBeTruthy();
+  expect(within(screen.getByRole("region", { name: "Session events" })).getAllByRole("article")[0].id).toBe("event-99");
+});
+
+test("tooltip action reopens the stream and reveals its event despite existing search, type, and file filters", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(fileCell());
+  await user.click(screen.getByRole("button", { name: "Expand event stream" }));
+  await user.type(screen.getByRole("searchbox", { name: "Search events" }), "no matching event");
+  await user.selectOptions(screen.getByRole("combobox", { name: "Filter event type" }), "error");
+  expect(within(screen.getByRole("region", { name: "Session events" })).queryAllByRole("article")).toHaveLength(0);
+  await user.click(screen.getByRole("button", { name: "Collapse event stream" }));
+  fireEvent.pointerEnter(screen.getByRole("button", { name: /^Jump to command 95:/ }), { pointerType: "mouse" });
+  await user.click(screen.getByRole("button", { name: "Open in event stream" }));
+  expect(screen.getByRole("button", { name: "Collapse event stream" })).toBeTruthy();
+  expect((screen.getByRole("searchbox", { name: "Search events" }) as HTMLInputElement).value).toBe("");
+  expect((screen.getByRole("combobox", { name: "Filter event type" }) as HTMLSelectElement).value).toBe("all");
+  const cards = within(screen.getByRole("region", { name: "Session events" })).getAllByRole("article");
+  expect(cards).toHaveLength(95);
+  expect(cards[0].id).toBe("event-95");
+  expect(screen.queryByRole("button", { name: "Show all events" })).toBeNull();
+  expect(fileCell().getAttribute("aria-pressed")).toBe("true");
+});
+
 test("batched scrubbing reconstructs historical heatmaps and Go live restores the latest state without opening the drawer", async () => {
   const user = userEvent.setup();
   render(<App />);
