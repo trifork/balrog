@@ -1,7 +1,8 @@
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { createActivityUpdates } from "../../tests/activity-fixtures";
 import type { PromptActivity } from "../../server/file-activity";
 import type { ToolExecution } from "../../server/analyzer";
 import type { LogEvent } from "../../server/log-receiver";
@@ -12,11 +13,13 @@ import { timelineMarkers } from "./timelineMarkers";
 import type { ReceivedEvent } from "./useViewer";
 
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); });
+let activityUpdates: ReturnType<typeof createActivityUpdates>;
+beforeEach(() => { activityUpdates = createActivityUpdates(); });
 
-const message = (id: number, tag: string, activity?: PromptActivity): ReceivedEvent => ({
+const message = (id: number, tag: string, activity?: PromptActivity, ...updates: PromptActivity[]): ReceivedEvent => ({
   id, receivedAt: 1_700_000_000_000 + id,
   event: { tag, sessionID: "s1", pluginID: "test", [tag]: { data: { sessionID: "s1" } } } as unknown as LogEvent,
-  fileActivity: activity,
+  activityUpdates: activity ? activityUpdates(id, activity, ...updates) : undefined,
 });
 
 const first: PromptActivity = { id: "1", sessionID: "s1", text: "First user prompt", files: [] };
@@ -27,7 +30,7 @@ test("timeline boundaries and numbers match heatmap activity rather than queued 
     message(1, "session.inbox.enqueued"), message(2, "session.execution.started", first),
     message(3, "session.inbox.delivered", first), message(4, "session.text.ended"),
     message(5, "session.inbox.delivered", second), message(6, "session.tool.success", first),
-    { ...message(7, "session.revert.staged", second), fileActivityUpdates: [first] },
+    message(7, "session.revert.staged", second, first),
   ];
   const prompts = collectActivity(events, "");
   const markers = timelineMarkers(events, prompts);
@@ -198,7 +201,7 @@ test("prompt boundaries survive command filtering and keep their summaries and n
 
 test("a command at a prompt boundary does not gain a duplicate recorder marker", () => {
   render(<Timeline events={[
-    { ...event(1, "session.tool.called", read), fileActivity: first },
+    { ...event(1, "session.tool.called", read), activityUpdates: activityUpdates(1, first) },
     event(2, "session.tool.called", read),
   ]} onSelect={vi.fn()} />);
   expect(screen.getAllByRole("button", { name: /^Jump to/ })).toHaveLength(1);

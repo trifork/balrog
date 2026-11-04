@@ -6,7 +6,7 @@ import { SessionAnalyzer } from "./analyzer.js";
 import { receiveAssessments } from "./assessments.js";
 import { conversationSnapshot } from "./conversation.js";
 import { eventContent } from "./event-content.js";
-import { FileActivityTracker, type PromptActivity } from "./file-activity.js";
+import type { SessionActivityUpdate } from "../shared/activity-protocol.js";
 import { serveFrontend } from "./frontend.js";
 import type { LogEvent } from "./log-receiver.js";
 import type { PermissionBroker } from "./permissions.js";
@@ -14,13 +14,11 @@ import { isLoopbackHost } from "./loopback.js";
 
 interface RetainedEvent {
   event: LogEvent;
-  fileActivity?: PromptActivity;
-  fileActivityUpdates?: PromptActivity[];
+  activityUpdates?: SessionActivityUpdate;
 }
 
 export class LogViewer {
   private readonly events: RetainedEvent[] = [];
-  private readonly fileActivity = new FileActivityTracker();
   private readonly subscribers = new Set<WebSocket>();
   private readonly sockets = new WebSocketServer({ noServer: true, maxPayload: 16_384 });
   private readonly server: Server;
@@ -135,6 +133,7 @@ export class LogViewer {
           : this.analyzer.getSession(sessionID);
         response.writeHead(session ? 200 : 404, {
           "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "no-store",
         });
         response.end(JSON.stringify(session ?? { error: "Session not found" }));
         return;
@@ -203,6 +202,7 @@ export class LogViewer {
             type: "snapshot",
             sessions: this.analyzer.getSessions(),
             events: this.events.map((entry, index) => this.message(entry, index + 1)),
+            heatmaps: this.analyzer.getSessionActivities(),
             permissions: this.permissions?.list() ?? [],
           });
           this.subscribers.add(client);
@@ -214,8 +214,7 @@ export class LogViewer {
   }
 
   publish(event: LogEvent): void {
-    const [fileActivity, ...updates] = this.fileActivity.processAll(event);
-    const entry = { event, fileActivity, fileActivityUpdates: updates.length ? updates : undefined };
+    const entry = { event, activityUpdates: this.analyzer.getActivityUpdates(event) };
     this.events.push(entry);
     if (!this.subscribers.size) return;
     const message = this.message(entry, this.events.length);
@@ -245,13 +244,12 @@ export class LogViewer {
     if (client.readyState === WebSocket.OPEN) client.send(JSON.stringify(response));
   }
 
-  private message({ event, fileActivity, fileActivityUpdates }: RetainedEvent, id: number): ViewerMessage {
+  private message({ event, activityUpdates }: RetainedEvent, id: number): ViewerMessage {
     const sessionID = this.analyzer.getSessionID(event);
     return {
       id,
       event,
-      fileActivity,
-      fileActivityUpdates,
+      activityUpdates,
       content: eventContent(event),
       command: this.analyzer.getToolCall(event)?.command?.split(/\r?\n/, 1)[0],
       execution: this.analyzer.getToolExecution(event),

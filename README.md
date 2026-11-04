@@ -228,13 +228,15 @@ WebSockets from the same port. Open the page before or after starting OpenCode; 
 shows incoming events and events already received during this viewer process. To
 change the server port, use `npm run view -- --port 8080` and configure both
 `logEndpoint` and `viewerURL` with that origin. By default the
-viewer retains events in memory and does not write them to files. Events can
+viewer persists raw events in `balrog-events.db` and replays them into memory on
+startup; use `--db <path>` to select another database. Events can
 include prompt text, tool arguments, and tool results, so the receiver and page
 bind to localhost by default.
 
 The frontend uses a same-origin WebSocket at `/ws` for two-way viewer
 communication. After connecting, it sends `{ "type": "snapshot.request" }`.
-The server replies with `{ "type": "snapshot", "sessions": [...], "events": [...] }`
+The server replies with
+`{ "type": "snapshot", "sessions": [...], "events": [...], "heatmaps": [...], "permissions": [...] }`
 and then pushes new events as `{ "type": "event", "message": {...} }`. Invalid
 requests receive `{ "type": "error", "message": "..." }`. Each message includes
 a viewer-local numeric ID alongside the original event envelope and display
@@ -242,8 +244,15 @@ metadata. The native event is not modified. Reconnecting requests a fresh
 snapshot and replaces the feed, avoiding duplicate events. The old `/events`
 SSE endpoint is no longer available. WebSocket permission replies can release
 live sensitive-read gates in OpenCode V2; historical events are read-only.
-File-tree state is attached as `fileActivity`; when one event affects several
-prompts, additional prompt snapshots are included in `fileActivityUpdates`.
+`heatmaps` contains the canonical session activity model also returned by HTTP
+`/api/sessions/<sessionID>/heatmap`. The Activity map uses this WebSocket snapshot
+for its initial state; it does not fetch a separate HTTP snapshot. Event messages
+carry `activityUpdates: { sessionID, items, removedIDs? }`: upsert each item by its
+stable `id` and remove any `removedIDs`. One update can change multiple prompts,
+including earlier prompts affected by undo. The same per-event updates are
+retained in snapshot `events` so timeline scrubbing can reconstruct activity at
+any recorded event without inspecting raw tool arguments. These replace the old
+`fileActivity` and `fileActivityUpdates` fields.
 
 The dashboard centers **File heatmap**: a live heatmap with observed
 files as rows and recorded prompts as columns. Choose a session using the header
@@ -268,7 +277,16 @@ and undo/redo updates refresh their original columns without moving the selectio
 Arrow keys move between cells, and Enter or Space selects one. On mobile, the
 inspector opens as a dismissible bottom sheet.
 
-File badges distinguish reads, edits, writes, additions, and deletions. Writes
+**Reads** includes successful explicit reads and confirmed grep matches.
+Each matched file contributes one read operation per grep call, regardless of
+how many matching lines it contains. These files also appear in **All activity**,
+with a **Grep match** badge distinct from a full-file **Read**. Grep matches never
+contribute to **Changes**, confirmed-change counts, or change candles. Pending or
+failed searches, empty results, and unmatched files under the search scope do not
+create file rows. Matched paths use the same normalization as explicit file
+operations so activity on the same file is combined.
+
+File badges distinguish reads, grep matches, edits, writes, additions, and deletions. Writes
 may create or overwrite a file. Pending and failed attempts remain visible as
 cell markers and badges but contribute no heat or confirmed changes. The
 inspector's touched-file count includes files with successful operations;
@@ -327,7 +345,8 @@ file-tool events, including multi-file `patch` and `apply_patch` calls. V2 also 
 to track undo and redo. Reload the
 V2 plugin after updating it. Older recordings without prompt events use labeled
 execution groups; missing prompt boundaries are labeled unattributed. Shell
-commands, search results, and diffs are not inferred. Calls belong to the prompt
+commands, unreported search results, and diffs are not inferred. Only files
+explicitly reported as grep matches are shown, not every file searched. Calls belong to the prompt
 active when they were observed, with completion linked by call ID; this is not
 causal attribution for concurrent prompts or agents. Activity is reconstructed
 when replaying a SQLite recording.
@@ -391,19 +410,43 @@ query its in-memory state. Session rename events update the remembered title.
 ### Session heatmap
 
 `GET http://localhost:5001/api/sessions/<sessionID>/heatmap` returns
-`{ schemaVersion: 1, sessionID, items }`, a chronological timeline of user prompts,
+`{ schemaVersion: 2, sessionID, items }`, a chronological timeline of user prompts,
 file reads, changes, and grep searches. Commands and LLM text remain in raw logs
-but are excluded here. Types are defined in `server/session-activity.ts`; use
+but are excluded here. Types and the delta merge helper are defined in
+`shared/activity-protocol.ts` (types are also exported by
+`server/session-activity.ts`); use
 `SessionAnalyzer.getSessionActivity(sessionID)` in TypeScript.
 
+HTTP and WebSocket delivery share one analyzer; HTTP remains available for scripts
+and debugging, while the UI receives a WebSocket snapshot and incremental updates
+on its existing `/ws` connection. Both reflect in-memory state reconstructed from
+recorded events, not a fresh database query. Clearing SQLite does not clear a
+running viewer's memory; restart the viewer and refresh the browser to discard
+previously loaded activity.
+
 Each item includes `id`, `kind`, `timestamp` (Unix milliseconds), `timestampSource`,
-and source event metadata. Optional `rationale` comes only from explicit tool
+`startEventID`, `eventIDs`, and source event metadata. IDs are opaque and scoped
+to the plugin and session. Prompt IDs use native identities when available, with
+deterministic per-session sequence fallbacks for older recordings. File
+operations link to their prompt with `promptID` and expose the native tool-call
+ID as `source.callID`; `source.pluginID`, optional `source.eventID`, and optional
+`source.messageID` identify the recorded evidence. `startEventID` and `eventIDs`
+reference numeric IDs in the viewer's retained trace; they are not SQLite row IDs
+and can change if the trace is filtered or reordered.
+
+Prompts have `phase: "queued" | "active"`. Queue admission records a prompt, but
+delivery or an observed execution determines its Activity map column and playback
+boundary. File changes include `reverted: true` when recorded undo or a confirmed
+inverse edit reverses them; redo updates the same items. Optional `rationale` comes only from explicit tool
 arguments, never inferred reasoning. File operations have `status` (`pending`,
 `completed`, or `failed`) and optional `completedAt`/`error`; filter on
 `status === "completed"` to exclude attempted or failed operations.
 
 Changes use `created`, `modified`, or `deleted`; writes are conservatively treated
-as modifications. Grep separates search scope from matched files, not all scanned
+as modifications with `operation: "written"` to preserve their distinct UI badge.
+Patch moves are represented as a deletion at the old path and a creation at the
+new path. To count current changes, require `status === "completed"` and
+`reverted !== true`. Grep separates search scope from matched files, not all scanned
 files. Indirect shell access, unknown tools, and missing historical events cannot
 be reconstructed. Timestamps prefer source time, then recorded time, then receipt
 time, as indicated by `timestampSource`.

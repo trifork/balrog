@@ -7,18 +7,18 @@ import { useViewer } from "./useViewer";
 import { PermissionRequests } from "./PermissionRequests";
 import { ReadWarning } from "./ReadWarning";
 import { Timeline } from "./Timeline";
-import { collectActivity } from "./file-activity-model";
+import { collectActivity, collectHeatmapActivity } from "./file-activity-model";
 
 const sessionFromURL = () => new URL(window.location.href).searchParams.get("session") || "";
 
 export function App() {
-  const { events, sessions, status, error, permissions, replyPermission } = useViewer();
+  const { events, sessions, heatmaps, status, error, permissions, replyPermission } = useViewer();
   const [selected, setSelected] = useState(sessionFromURL);
   const [activeEventID, setActiveEventID] = useState<number>();
   const [followingLive, setFollowingLive] = useState(true);
   const [jumpRequest, setJumpRequest] = useState<{ id: number }>();
   const [promptJump, setPromptJump] = useState<{ id: number }>();
-  const prompts = useMemo(() => collectActivity(events, selected), [events, selected]);
+  const prompts = useMemo(() => collectHeatmapActivity(heatmaps, selected), [heatmaps, selected]);
   const cutoffEventID = followingLive ? undefined : activeEventID ?? 0;
   const activityPrompts = useMemo(() => cutoffEventID === undefined ? prompts
     : collectActivity(events.filter((message) => message.id <= cutoffEventID), selected), [events, selected, prompts, cutoffEventID]);

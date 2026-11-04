@@ -9,6 +9,7 @@ export interface FileTouch {
   action: FileAction;
   outcome: Outcome;
   callID: string;
+  via?: "grep";
   reverted?: boolean;
 }
 
@@ -115,13 +116,17 @@ function patchEdits(lines: string[]): Replacement[] | undefined {
 
 /** Tracks explicit file-tool activity; shell commands are deliberately not inferred. */
 export class FileActivityTracker {
-  private sequence = 0;
+  private readonly sequences = new Map<string, number>();
   private readonly sessions = new Map<string, SessionActivity>();
   private readonly inbox = new Map<string, string>();
   private readonly calls = new Map<string, ToolCall>();
   private readonly edits = new WeakMap<FileTouch, Replacement[]>();
   private readonly roots = new Map<string, string>();
   private updates: PromptActivity[] = [];
+
+  normalizeFilePath(value: string, pluginID: string, root?: string): string {
+    return normalizePath(value, root ?? this.roots.get(pluginID));
+  }
 
   processAll(event: LogEvent): PromptActivity[] {
     this.process(event);
@@ -171,7 +176,12 @@ export class FileActivityTracker {
       session.messageID = messageID;
     }
     const start = (label: string, fallback = false) => {
-      session.current = { id: String(++this.sequence), sessionID, text: label, files: [] };
+      const sequence = (this.sequences.get(scope) ?? 0) + 1;
+      this.sequences.set(scope, sequence);
+      const identity = text(data?.inboxID) ? ["inbox", data?.inboxID]
+        : text(native?.id) ? ["event", native?.id]
+        : messageID ? ["message", tag, messageID] : ["sequence", sequence];
+      session.current = { id: JSON.stringify([pluginID, sessionID, identity]), sessionID, text: label, files: [] };
       session.fallback = fallback;
       return session.current;
     };
@@ -228,7 +238,7 @@ export class FileActivityTracker {
     const before = tag === "session.tool.called" || tag === "tool.execute.before";
     const after = tag === "session.tool.success" || tag === "session.tool.failed" || tag === "tool.execute.after";
     if (!before && !after) return undefined;
-    const tool = text(data?.tool) ?? text(input?.tool) ?? previous?.tool;
+    const tool = (text(data?.tool) ?? text(input?.tool) ?? previous?.tool)?.split(/[._]/).at(-1)?.toLowerCase();
     const args = tag.startsWith("tool.execute.")
       ? object(object(payload?.output)?.args) ?? object(input?.args)
       : object(data?.input);
@@ -239,7 +249,7 @@ export class FileActivityTracker {
       messageID: previous?.messageID ?? messageID ?? session.messageID,
     };
     this.calls.set(key, call);
-    const outcome: Outcome = tag === "session.tool.failed" ? "failed" : after ? "success" : "pending";
+    const outcome: Outcome = tag === "session.tool.failed" || object(data?.metadata)?.status === "error" ? "failed" : after ? "success" : "pending";
     if (before || !prompt.files.some((file) => file.callID === callID)) {
       for (const { edits, ...file } of this.extractFiles(tool, args, root)) {
         if (!prompt.files.some((existing) => existing.callID === callID && existing.path === file.path && existing.action === file.action)) {

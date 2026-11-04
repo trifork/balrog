@@ -1,19 +1,25 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { FileActivityTracker, type PromptActivity } from "../../server/file-activity";
+import type { PromptActivity } from "../../server/file-activity";
+import { SessionActivityAnalyzer } from "../../server/session-activity";
+import { createActivityUpdates } from "../../tests/activity-fixtures";
 import type { LogEvent } from "../../server/log-receiver";
 import { FileActivity } from "./FileActivity";
 import type { ReceivedEvent } from "./useViewer";
 
-beforeEach(() => vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false }))));
+let activityUpdates: ReturnType<typeof createActivityUpdates>;
+beforeEach(() => {
+  activityUpdates = createActivityUpdates();
+  vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })));
+});
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
-function message(id: number, activity: PromptActivity): ReceivedEvent {
+function message(id: number, activity: PromptActivity, ...updates: PromptActivity[]): ReceivedEvent {
   return {
     id, receivedAt: 1_700_000_000_000 + id,
     event: { tag: "session.prompt", sessionID: activity.sessionID, pluginID: "test" } as unknown as LogEvent,
-    fileActivity: activity,
+    activityUpdates: activityUpdates(id, activity, ...updates),
   };
 }
 
@@ -132,7 +138,7 @@ test("undo and redo update an older column without changing the session summary 
   const events = [message(1, first), message(2, second)];
   const { rerender } = render(<FileActivity events={events} sessions={[]} selectedSession="" />);
   const reverted: PromptActivity = { ...first, files: first.files.map((file) => file.callID === "edit" ? { ...file, reverted: true } : file) };
-  const update = { ...message(3, second), fileActivityUpdates: [reverted] };
+  const update = message(3, second, reverted);
   rerender(<FileActivity events={[...events, update]} sessions={[]} selectedSession="" />);
   expect(promptButton("02").getAttribute("aria-pressed")).toBe("false");
   expect(cell("src/app.ts").textContent).toBe("1");
@@ -143,7 +149,7 @@ test("undo and redo update an older column without changing the session summary 
   await user.click(promptButton("01"));
   expect(inspector().getByText("Edit (Reverted)")).toBeTruthy();
   expect(inspector().getByText("2 files touched / 1 confirmed changed")).toBeTruthy();
-  rerender(<FileActivity events={[...events, update, { ...message(4, second), fileActivityUpdates: [first] }]} sessions={[]} selectedSession="" />);
+  rerender(<FileActivity events={[...events, update, message(4, second, first)]} sessions={[]} selectedSession="" />);
   expect(promptButton("01").getAttribute("aria-pressed")).toBe("true");
   expect(inspector().queryByText("Edit (Reverted)")).toBeNull();
   expect(inspector().getByText("2 files touched / 2 confirmed changed")).toBeTruthy();
@@ -214,15 +220,58 @@ test("shows empty states and safely renders prompt and file text", () => {
 });
 
 function recording() {
-  const tracker = new FileActivityTracker();
+  const tracker = new SessionActivityAnalyzer();
   const events: ReceivedEvent[] = [];
   const publish = (tag: string, data: Record<string, unknown>, sessionID = "s1") => {
     const event = { tag, sessionID, pluginID: "test", [tag]: { type: tag, data: { sessionID, ...data } } } as unknown as LogEvent;
-    const [fileActivity, ...fileActivityUpdates] = tracker.processAll(event);
-    events.push({ id: events.length + 1, receivedAt: 1_700_000_000_000 + events.length, event, fileActivity, fileActivityUpdates });
+    tracker.process(event);
+    events.push({ id: events.length + 1, receivedAt: 1_700_000_000_000 + events.length, event, activityUpdates: tracker.getUpdates(event) });
   };
   return { events, publish };
 }
+
+test("grep matches appear under Reads with distinct badges, trace links and historical state", async () => {
+  const user = userEvent.setup();
+  const { events, publish } = recording();
+  publish("session.prompt", { text: "Find the implementation" });
+  publish("session.tool.input.started", { id: "grep", name: "grep" });
+  publish("session.tool.called", { id: "grep", input: { path: "src", pattern: "needle" } });
+  const pending = [...events];
+  const { rerender } = render(<FileActivity events={pending} sessions={[]} selectedSession="" />);
+  expect(screen.getByText("0 files × 1 prompts")).toBeTruthy();
+  publish("session.tool.success", { id: "grep", content: [{
+    type: "text", text: "Found 3 matches\nsrc/app.ts:\n  Line 1: needle\nsrc/match.ts:\n  Line 2: needle\nsrc/app.ts:\n  Line 3: needle",
+  }] });
+  publish("session.tool.called", { id: "read", tool: "read", input: { path: "src/app.ts" } });
+  publish("session.tool.success", { id: "read" });
+  const complete = [...events];
+  rerender(<FileActivity events={complete} sessions={[]} selectedSession="" />);
+  expect(screen.getByText("2 files × 1 prompts")).toBeTruthy();
+  expect(inspector().getByText("2 files touched / 0 confirmed changed")).toBeTruthy();
+  expect(cell("src/app.ts").textContent).toBe("2");
+  expect(cell("src/match.ts").textContent).toBe("1");
+  const badges = within(inspector().getByRole("list", { name: "Touched files" }));
+  expect(badges.getAllByText("Grep match")).toHaveLength(2);
+  expect(badges.getAllByText("Read")).toHaveLength(1);
+  await user.click(screen.getByRole("button", { name: "Reads" }));
+  expect(cell("src/app.ts").textContent).toBe("2");
+  expect(cell("src/match.ts").textContent).toBe("1");
+  await user.hover(cell("src/match.ts"));
+  const stats = screen.getByRole("tooltip").querySelector('[data-operation="reads"]')!;
+  expect(stats.textContent).toContain("1");
+  await user.click(screen.getByRole("button", { name: "Changes" }));
+  expect(cell("src/match.ts").getAttribute("data-heat")).toBe("0");
+  expect(promptButton("01").title).toContain("No confirmed changes");
+  await user.click(screen.getByRole("button", { name: "Reads" }));
+  await user.click(cell("src/match.ts"));
+  await user.click(inspector().getByRole("button", { name: "Inspect 3 related events" }));
+  const feed = within(screen.getByRole("region", { name: "Session events" }));
+  expect(feed.getAllByRole("article")).toHaveLength(3);
+  rerender(<FileActivity events={pending} sessions={[]} selectedSession="" />);
+  expect(screen.getByText("0 files × 1 prompts")).toBeTruthy();
+  rerender(<FileActivity events={complete} sessions={[]} selectedSession="" />);
+  expect(cell("src/match.ts").textContent).toBe("1");
+});
 
 test("related events include tool starts and outcomes, excluding other files and same-call-ID sessions", async () => {
   const user = userEvent.setup();

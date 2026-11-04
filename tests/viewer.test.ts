@@ -8,6 +8,7 @@ import { SessionAnalyzer } from "../server/analyzer.js";
 import { LogReceiver, type LogEvent } from "../server/log-receiver.js";
 import { LogViewer } from "../server/viewer.js";
 import type { ViewerResponse } from "../shared/viewer-protocol.js";
+import { applyActivityUpdate, type SessionActivity } from "../shared/activity-protocol.js";
 
 function nativeEvent(tag: string, sessionID: string, created: number, data: object): LogEvent {
   return {
@@ -167,6 +168,27 @@ async function request(socket: WebSocket, body: unknown): Promise<ViewerResponse
   return JSON.parse(String(data));
 }
 
+test("heatmap HTTP and WebSocket responses expose confirmed grep matched files", async (t) => {
+  const { origin, publish, connect } = await startViewer(t);
+  publish("session.prompt", { text: "Find the implementation" });
+  publish("session.tool.input.started", { id: "grep", name: "grep" });
+  publish("session.tool.called", { id: "grep", input: { path: "src", pattern: "needle" } });
+  publish("session.tool.success", { id: "grep", content: [{
+    type: "text", text: "Found 2 matches\n./src/app.ts:\n  Line 1: needle\nsrc/app.ts:\n  Line 2: needle",
+  }] });
+  const response = await fetch(`${origin}/api/sessions/session-viewer/heatmap`);
+  assert.equal(response.status, 200);
+  const heatmap: SessionActivity = await response.json();
+  const grep = heatmap.items.find((item) => item.kind === "file.grep");
+  assert.ok(grep);
+  assert.deepEqual(grep.matchedFiles, ["src/app.ts"]);
+  assert.equal(grep.status, "completed");
+  const socket = await connect();
+  const snapshot = await request(socket, { type: "snapshot.request" });
+  assert.ok(snapshot.type === "snapshot");
+  assert.deepEqual(snapshot.heatmaps, [heatmap]);
+});
+
 test("one server receives events and serves the live viewer", { timeout: 5_000 }, async (t) => {
   const server = createServer();
   const analyzer = new SessionAnalyzer();
@@ -262,7 +284,7 @@ test("viewer serves built React assets and preserves the session HTTP API", { ti
   const activity = await fetch(`${origin}/api/sessions/session-viewer/heatmap`);
   assert.equal(activity.status, 200);
   const activityJSON = await activity.json();
-  assert.equal(activityJSON.schemaVersion, 1);
+  assert.equal(activityJSON.schemaVersion, 2);
   assert.equal(activityJSON.sessionID, "session-viewer");
   assert.deepEqual(activityJSON.items, []);
   assert.equal((await fetch(`${origin}/api/sessions/missing/heatmap`)).status, 404);
@@ -277,7 +299,8 @@ test("heatmap API includes only prompts and file access from a mixed trace", asy
   const address = viewer.address();
   assert.ok(address && typeof address !== "string");
   const events = [
-    { type: "session.inbox.enqueued", data: { item: { type: "user", payload: { text: "Review README.md" } } } },
+    { type: "session.inbox.enqueued", data: { inboxID: "prompt-1", item: { type: "user", payload: { text: "Review README.md" } } } },
+    { type: "session.inbox.delivered", data: { inboxID: "prompt-1" } },
     { type: "session.tool.called", data: { id: "read-1", tool: "read", input: { path: "README.md" } } },
     { type: "session.tool.success", data: { id: "read-1" } },
     { type: "session.tool.called", data: { id: "shell-1", tool: "shell", input: { command: "git status" } } },
@@ -328,7 +351,7 @@ test("WebSocket snapshots and live updates preserve raw events and display enric
 });
 
 test("viewer replays immutable file activity snapshots and pushes live outcomes", { timeout: 5_000 }, async (t) => {
-  const { connect, publish } = await startViewer(t);
+  const { connect, publish, origin } = await startViewer(t);
   publish("session.prompt", { text: "Edit one file" });
   publish("session.tool.input.started", { id: "c1", name: "patch" });
   publish("session.tool.called", {
@@ -341,15 +364,26 @@ test("viewer replays immutable file activity snapshots and pushes live outcomes"
   assert.equal(snapshot.type, "snapshot");
   if (snapshot.type !== "snapshot") return;
   assert.equal(snapshot.events.length, 5);
-  const activities = snapshot.events.flatMap((message) => message.fileActivity ? [message.fileActivity] : []);
-  assert.equal(activities[0].text, "Edit one file");
-  assert.deepEqual(activities[0].files, []);
-  assert.equal(activities[1].files[0].outcome, "pending");
-  assert.equal(activities[2].files[0].outcome, "success");
-  assert.equal(activities[2].files[0].path, "src/app.ts");
-  assert.equal(activities[0].id, activities[2].id);
-  assert.notEqual(activities[3].id, activities[2].id);
-  assert.deepEqual(activities[3].files, []);
+  const heatmapURL = `${origin}/api/sessions/session-viewer/heatmap`;
+  const response = await fetch(heatmapURL);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("Cache-Control"), "no-store");
+  assert.deepEqual(snapshot.heatmaps, [await response.json()]);
+  const prompt = snapshot.events[0].activityUpdates?.items.find((item) => item.kind === "prompt");
+  assert.ok(prompt?.kind === "prompt");
+  assert.equal(prompt.text, "Edit one file");
+  const pending = snapshot.events[2].activityUpdates?.items.find((item) => item.kind === "file.change");
+  const done = snapshot.events[3].activityUpdates?.items.find((item) => item.kind === "file.change");
+  assert.ok(pending?.kind === "file.change" && done?.kind === "file.change");
+  assert.equal(pending.status, "pending");
+  assert.equal(done.status, "completed");
+  assert.equal(done.path, "src/app.ts");
+  assert.equal(done.id, pending.id);
+  assert.equal(done.promptID, prompt.id);
+  assert.deepEqual(done.eventIDs, [2, 3, 4]);
+  const next = snapshot.events[4].activityUpdates?.items.find((item) => item.kind === "prompt");
+  assert.ok(next);
+  assert.notEqual(next.id, prompt.id);
   assert.deepEqual(await request(socket, { type: "snapshot.request" }), snapshot);
 
   const pushed = once(socket, "message");
@@ -359,17 +393,25 @@ test("viewer replays immutable file activity snapshots and pushes live outcomes"
   assert.equal(live.type, "event");
   if (live.type !== "event") return;
   assert.equal(live.message.id, 6);
-  assert.equal(live.message.fileActivity?.id, activities[3].id);
-  assert.equal(live.message.fileActivity?.files[0].path, "README.md");
-  assert.equal(live.message.fileActivity?.files[0].outcome, "pending");
+  const read = live.message.activityUpdates?.items.find((item) => item.kind === "file.read");
+  assert.ok(read?.kind === "file.read");
+  assert.equal(read.promptID, next.id);
+  assert.equal(read.path, "README.md");
+  assert.equal(read.status, "pending");
   const completed = once(socket, "message");
   publish("session.tool.failed", { id: "c2" });
   const [completedData] = await completed;
   const outcome: ViewerResponse = JSON.parse(String(completedData));
   assert.equal(outcome.type, "event");
   if (outcome.type !== "event") return;
-  assert.equal(outcome.message.fileActivity?.files[0].outcome, "failed");
-  assert.equal(live.message.fileActivity?.files[0].outcome, "pending");
+  const failed = outcome.message.activityUpdates?.items.find((item) => item.kind === "file.read");
+  assert.ok(failed?.kind === "file.read");
+  assert.equal(failed.status, "failed");
+  assert.equal(read.status, "pending");
+  assert.deepEqual(
+    applyActivityUpdate(applyActivityUpdate(snapshot.heatmaps, live.message.activityUpdates!), outcome.message.activityUpdates!),
+    [await (await fetch(heatmapURL)).json()],
+  );
 });
 
 test("snapshots replay all 600 events and repeat without mutating retained history", { timeout: 5_000 }, async (t) => {
@@ -403,23 +445,24 @@ test("native undo and redo push updates for all affected prompts and survive rec
   const live: ViewerResponse = JSON.parse(String(data));
   assert.equal(live.type, "event");
   if (live.type !== "event") return;
-  const updates = [live.message.fileActivity!, ...live.message.fileActivityUpdates ?? []];
+  const updates = live.message.activityUpdates?.items.filter((item) => item.kind === "file.change") ?? [];
   assert.equal(updates.length, 2);
-  assert.ok(updates.every((prompt) => prompt.files[0].reverted));
+  assert.ok(updates.every((item) => item.reverted));
   const reconnected = await connect();
   const snapshot = await request(reconnected, { type: "snapshot.request" });
   assert.equal(snapshot.type, "snapshot");
   if (snapshot.type !== "snapshot" || original.type !== "snapshot") return;
   assert.deepEqual(snapshot.events.at(-1), live.message);
-  assert.equal(original.events[2].fileActivity?.files[0].reverted, undefined);
+  assert.ok(snapshot.heatmaps[0].items.filter((item) => item.kind === "file.change").every((item) => item.reverted));
+  assert.ok(original.heatmaps[0].items.filter((item) => item.kind === "file.change").every((item) => !item.reverted));
+  assert.equal(original.events[2].activityUpdates?.items.find((item) => item.kind === "file.change")?.reverted, undefined);
   const cleared = once(socket, "message");
   publish("session.revert.cleared");
   const [clearedData] = await cleared;
   const redo: ViewerResponse = JSON.parse(String(clearedData));
   assert.equal(redo.type, "event");
   if (redo.type !== "event") return;
-  assert.equal(redo.message.fileActivity?.files[0].reverted, undefined);
-  assert.equal(redo.message.fileActivityUpdates?.[0].files[0].reverted, undefined);
+  assert.ok(redo.message.activityUpdates?.items.filter((item) => item.kind === "file.change").every((item) => !item.reverted));
 });
 
 test("invalid requests return errors, and only requested subscriptions receive events", { timeout: 5_000 }, async (t) => {

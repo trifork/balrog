@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SessionSummary, ViewerMessage, ViewerRequest, ViewerResponse } from "../../shared/viewer-protocol";
 import { permissionKey, type PendingPermission, type PermissionDecision, type PermissionIdentity } from "../../shared/permission-protocol";
+import { applyActivityUpdate, type SessionActivity } from "../../shared/activity-protocol";
 
 export interface ReceivedEvent extends ViewerMessage {
   receivedAt: number;
@@ -9,6 +10,7 @@ export interface ReceivedEvent extends ViewerMessage {
 export interface ViewerState {
   events: ReceivedEvent[];
   sessions: SessionSummary[];
+  heatmaps: SessionActivity[];
   status: "connecting" | "live" | "reconnecting";
   permissions: PendingPermission[];
   replyPermission: (identity: PermissionIdentity, decision: PermissionDecision) => void;
@@ -16,7 +18,7 @@ export interface ViewerState {
 }
 
 export function useViewer(): ViewerState {
-  const [state, setState] = useState<Omit<ViewerState, "replyPermission">>({ events: [], sessions: [], permissions: [], status: "connecting" });
+  const [state, setState] = useState<Omit<ViewerState, "replyPermission">>({ events: [], sessions: [], heatmaps: [], permissions: [], status: "connecting" });
   const socketRef = useRef<WebSocket | null>(null);
   const liveRef = useRef(false);
   const permissionsRef = useRef<PendingPermission[]>([]);
@@ -61,12 +63,21 @@ export function useViewer(): ViewerState {
         try {
           const response = JSON.parse(data) as ViewerResponse;
           if (response.type === "snapshot") {
+            if (!Array.isArray(response.heatmaps) || response.heatmaps.some((heatmap) => heatmap.schemaVersion !== 2)) {
+              liveRef.current = false;
+              setState((previous) => ({
+                ...previous, status: "connecting",
+                error: "Unsupported activity snapshot. Restart the viewer server and refresh the page.",
+              }));
+              return;
+            }
             delay = 1_000;
             liveRef.current = true;
             permissionsRef.current = response.permissions ?? [];
             setState({
               status: "live",
               sessions: response.sessions,
+              heatmaps: response.heatmaps,
               events: response.events.map((message) => ({ ...message, receivedAt: Date.now() })),
               permissions: permissionsRef.current,
             });
@@ -77,7 +88,8 @@ export function useViewer(): ViewerState {
               const sessions = session
                 ? [...previous.sessions.filter((item) => item.sessionID !== session.sessionID), session]
                 : previous.sessions;
-              return { ...previous, events: [...previous.events, message], sessions };
+              const heatmaps = message.activityUpdates ? applyActivityUpdate(previous.heatmaps, message.activityUpdates) : previous.heatmaps;
+              return { ...previous, events: [...previous.events, message], sessions, heatmaps };
             });
           } else if (response.type === "permissions") {
             permissionsRef.current = response.permissions;

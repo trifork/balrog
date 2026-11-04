@@ -209,6 +209,14 @@ export class SessionAnalyzer {
     return this.activity.getSession(sessionID);
   }
 
+  getSessionActivities(): SessionActivity[] {
+    return this.activity.getSessions();
+  }
+
+  getActivityUpdates(event: LogEvent) {
+    return this.activity.getUpdates(event);
+  }
+
   getSession(sessionID: string): SessionSummary | undefined {
     const session = this.sessions.get(sessionID);
     return session ? this.toSummary(session) : undefined;

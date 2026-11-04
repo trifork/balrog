@@ -1,7 +1,7 @@
 import type { RefObject } from "react";
 import type { FileTouch } from "../../server/file-activity";
 import { Icon } from "./Icon";
-import { actionBadges, actionLabel, fileName, folderName, operationCount, promptNumber, type ActivityPrompt } from "./file-activity-model";
+import { actionBadgeKey, actionBadges, actionLabel, fileName, folderName, operationCount, promptNumber, type ActivityPrompt } from "./file-activity-model";
 
 interface Props {
   prompt?: ActivityPrompt;
@@ -20,7 +20,7 @@ interface Props {
 
 function FileBadges({ touches }: { touches: FileTouch[] }) {
   return <span className="file-badges">{actionBadges(touches).map((touch) => <span className="file-badge"
-    key={`${touch.action}/${touch.outcome}/${Boolean(touch.reverted)}`} data-action={touch.action} data-outcome={touch.outcome} data-reverted={touch.reverted || undefined}
+    key={actionBadgeKey(touch)} data-action={touch.action} data-outcome={touch.outcome} data-reverted={touch.reverted || undefined}
     title={touch.reverted ? "This recorded action was reverted." : undefined}>{actionLabel(touch)}</span>)}</span>;
 }
 

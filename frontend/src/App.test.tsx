@@ -6,9 +6,12 @@ import type { LogEvent } from "../../server/log-receiver";
 import type { PromptActivity } from "../../server/file-activity";
 import { App } from "./App";
 import type { ReceivedEvent, ViewerState } from "./useViewer";
+import { createActivityUpdates } from "../../tests/activity-fixtures";
+import { activityAtEvents } from "./file-activity-model";
 
 let state: ViewerState;
-vi.mock("./useViewer", () => ({ useViewer: () => state }));
+let activityUpdates: ReturnType<typeof createActivityUpdates>;
+vi.mock("./useViewer", () => ({ useViewer: () => ({ ...state, heatmaps: activityAtEvents(state.events) }) }));
 
 function message(id: number, tag: string, sessionID: string, content?: string): ReceivedEvent {
   return {
@@ -37,11 +40,13 @@ function command(id: number, sessionID = "s1"): ReceivedEvent {
 }
 
 beforeEach(() => {
+  activityUpdates = createActivityUpdates();
   window.history.replaceState(null, "", "/");
   vi.stubGlobal("matchMedia", vi.fn(() => ({
     matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn(),
   })));
   state = {
+    heatmaps: [],
     permissions: [],
     replyPermission: vi.fn(),
     status: "live",
@@ -230,7 +235,7 @@ test("keeps raw details open across filtering and lets new events inherit the co
 
 test("shows initial empty state and disables collapse when no event has content", async () => {
   const user = userEvent.setup();
-  state = { events: [], sessions: [], status: "connecting", permissions: [], replyPermission: vi.fn() };
+  state = { events: [], sessions: [], heatmaps: [], status: "connecting", permissions: [], replyPermission: vi.fn() };
   render(<App />);
   expect(screen.getByRole("heading", { name: "Ready when you are" })).toBeTruthy();
   await openEvents(user);
@@ -243,10 +248,10 @@ test("keeps session tabs in the header and scopes the heatmap and related event 
   const user = userEvent.setup();
   state.events = state.events.map((event) => event.id === 1 || event.id === 4 ? {
     ...event,
-    fileActivity: {
+    activityUpdates: activityUpdates(event.id, {
       id: String(event.id), sessionID: event.event.sessionID!, text: `Prompt ${event.id}`,
       files: [{ path: `src/file${event.id}.ts`, action: "read", outcome: "success", callID: String(event.id) }],
-    },
+    }),
   } : event);
   render(<App />);
   const heatmap = () => within(screen.getByRole("table", { name: "File operations by prompt" }));
@@ -331,9 +336,9 @@ test("scrubbing reconstructs historical heatmap snapshots and Go live restores l
     ...file, reverted: file.callID === "edit",
   })) };
   state.events = [
-    { ...message(1, "session.inbox.delivered", "s1"), fileActivity: pending },
-    { ...command(2), fileActivity: completed },
-    { ...command(3), fileActivityUpdates: [reverted] },
+    { ...message(1, "session.inbox.delivered", "s1"), activityUpdates: activityUpdates(1, pending) },
+    { ...command(2), activityUpdates: activityUpdates(2, completed) },
+    { ...command(3), activityUpdates: activityUpdates(3, reverted) },
   ];
   const { rerender } = render(<App />);
   const heatmap = () => within(screen.getByRole("table", { name: "File operations by prompt" }));
@@ -360,9 +365,9 @@ test("scrubbing reconstructs historical heatmap snapshots and Go live restores l
   fireEvent.keyDown(slider, { key: "ArrowLeft" });
   state = { ...state, events: [...state.events, {
     ...message(4, "session.inbox.delivered", "s1"),
-    fileActivity: { id: "2", sessionID: "s1", text: "Later prompt", files: [
+    activityUpdates: activityUpdates(4, { id: "2", sessionID: "s1", text: "Later prompt", files: [
       { path: "src/later.ts", action: "created", outcome: "success", callID: "create" },
-    ] },
+    ] }),
   }] };
   rerender(<App />);
   expect(cell("app").getAttribute("data-heat")).toBe("1");
@@ -384,10 +389,10 @@ test("timeline follows the session without inheriting related-event filters or h
   state.permissions = [{ pluginID: "p1", sessionID: "s1", requestID: "r1", resources: ["/project/appsettings.json"], status: "pending" }];
   state.events[0] = {
     ...command(1),
-    fileActivity: {
+    activityUpdates: activityUpdates(1, {
       id: "1", sessionID: "s1", text: "Read a file",
       files: [{ path: "src/file.ts", action: "read", outcome: "success", callID: "1" }],
-    },
+    }),
   };
   render(<App />);
   await user.click(screen.getByRole("tab", { name: /First session/ }));
@@ -408,10 +413,10 @@ test("timeline remains stable when a related file has no events in the next prom
   let commits = 0;
   state.events = ["first", "second"].map((name, index) => ({
     ...message(index + 1, "session.text.ended", "s1", name),
-    fileActivity: {
+    activityUpdates: activityUpdates(index + 1, {
       id: String(index + 1), sessionID: "s1", text: name,
       files: [{ path: `src/${name}.ts`, action: "read" as const, outcome: "success" as const, callID: String(index + 1) }],
-    },
+    }),
   }));
   render(<Profiler id="timeline-integration" onRender={() => {
     if (++commits > 40) throw new Error("Timeline update loop");
@@ -432,10 +437,10 @@ test("heatmap prompt navigation centers the timeline while preserving live playb
   const first = { id: "1", sessionID: "s1", text: "First prompt", files: [] };
   const second = { id: "2", sessionID: "s1", text: "Second prompt", files: [] };
   state.events = [
-    { ...message(1, "session.inbox.delivered", "s1"), fileActivity: first },
-    { ...message(2, "session.tool.success", "s1"), fileActivity: first },
-    { ...message(3, "session.inbox.delivered", "s1"), fileActivity: second },
-    { ...message(4, "session.tool.success", "s1"), fileActivity: second },
+    { ...message(1, "session.inbox.delivered", "s1"), activityUpdates: activityUpdates(1, first) },
+    { ...message(2, "session.tool.success", "s1"), activityUpdates: activityUpdates(2, first) },
+    { ...message(3, "session.inbox.delivered", "s1"), activityUpdates: activityUpdates(3, second) },
+    { ...message(4, "session.tool.success", "s1"), activityUpdates: activityUpdates(4, second) },
   ];
   render(<App />);
   const slider = screen.getByRole("slider", { name: "Scrub to event" });

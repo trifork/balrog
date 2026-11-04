@@ -1,6 +1,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { useViewer } from "./useViewer";
+import { createActivityUpdates } from "../../tests/activity-fixtures";
 
 class MockWebSocket {
   static OPEN = 1;
@@ -45,14 +46,37 @@ test("requests a snapshot and replaces replayed state instead of duplicating eve
   expect(socket.url).toMatch(/^ws:\/\/.+\/ws$/);
   act(() => socket.onopen?.());
   expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: "snapshot.request" }));
-  act(() => socket.receive({ type: "snapshot", sessions: [message.session], events: [message] }));
+  act(() => socket.receive({ type: "snapshot", sessions: [message.session], events: [message], heatmaps: [] }));
   expect(result.current.status).toBe("live");
   expect(result.current.events).toHaveLength(1);
   act(() => socket.receive({ type: "event", message: { ...message, id: 2 } }));
   expect(result.current.events).toHaveLength(2);
-  act(() => socket.receive({ type: "snapshot", sessions: [], events: [message] }));
+  act(() => socket.receive({ type: "snapshot", sessions: [], events: [message], heatmaps: [] }));
   expect(result.current.events).toHaveLength(1);
   expect(result.current.sessions).toEqual([]);
+  expect(result.current.heatmaps).toEqual([]);
+});
+
+test("uses canonical snapshot heatmaps, applies live updates and replaces state after reconnect", () => {
+  const updates = createActivityUpdates();
+  const first = { id: "p1", sessionID: "s1", text: "Change a file", files: [] };
+  const initial = updates(1, first);
+  const heatmap = { schemaVersion: 2, sessionID: "s1", items: initial.items };
+  const { result } = renderHook(() => useViewer());
+  const socket = MockWebSocket.instances[0];
+  // The initial map comes from the snapshot, not from reinterpreting raw events.
+  act(() => socket.receive({ type: "snapshot", sessions: [], events: [], heatmaps: [heatmap], permissions: [] }));
+  expect(result.current.heatmaps).toEqual([heatmap]);
+  const change = updates(2, { ...first, files: [
+    { path: "app.ts", action: "modified", outcome: "success", callID: "edit" },
+  ] });
+  act(() => socket.receive({ type: "event", message: { ...message, id: 2, activityUpdates: change } }));
+  const live = result.current.heatmaps[0].items.find((item) => item.kind === "file.change");
+  expect(live).toMatchObject({ status: "completed", path: "app.ts", promptID: initial.items[0].id });
+  expect(heatmap.items).toHaveLength(1);
+  act(() => socket.receive({ type: "snapshot", sessions: [], events: [], heatmaps: [], permissions: [] }));
+  expect(result.current.heatmaps).toEqual([]);
+  expect(result.current.events).toEqual([]);
 });
 
 test("reconnects after close and cleans up sockets and retries on unmount", () => {
@@ -81,6 +105,17 @@ test("ignores malformed server frames and surfaces protocol errors", () => {
   expect(result.current.error).toBe("Invalid request");
 });
 
+test("incompatible activity snapshots show an explicit error instead of opening a broken map", () => {
+  const { result } = renderHook(() => useViewer());
+  const socket = MockWebSocket.instances[0];
+  for (const heatmaps of [undefined, [{ schemaVersion: 1, sessionID: "s1", items: [] }]]) {
+    act(() => socket.receive({ type: "snapshot", sessions: [], events: [], heatmaps, permissions: [] }));
+    expect(result.current.status).not.toBe("live");
+    expect(result.current.error).toContain("Restart the viewer server");
+    expect(result.current.heatmaps).toEqual([]);
+  }
+});
+
 const permission = {
   pluginID: "p1", sessionID: "s1", requestID: "r1", resources: ["/src/appsettings.json"], status: "pending" as const,
 };
@@ -88,7 +123,7 @@ const permission = {
 test("permission snapshots and updates are separate from history and send exact once-only replies", () => {
   const { result } = renderHook(() => useViewer());
   const socket = MockWebSocket.instances[0];
-  act(() => socket.receive({ type: "snapshot", sessions: [], events: [], permissions: [permission] }));
+  act(() => socket.receive({ type: "snapshot", sessions: [], events: [], heatmaps: [], permissions: [permission] }));
   expect(result.current.permissions).toEqual([permission]);
   act(() => {
     result.current.replyPermission(permission, "once");
@@ -109,7 +144,7 @@ test("permissions cannot be answered offline or replayed after removal, and a fa
   const socket = MockWebSocket.instances[0];
   act(() => result.current.replyPermission(permission, "once"));
   expect(socket.send).not.toHaveBeenCalled();
-  act(() => socket.receive({ type: "snapshot", sessions: [], events: [], permissions: [permission] }));
+  act(() => socket.receive({ type: "snapshot", sessions: [], events: [], heatmaps: [], permissions: [permission] }));
   act(() => result.current.replyPermission(permission, "reject"));
   expect(JSON.parse(socket.send.mock.calls[0][0]).decision).toBe("reject");
   act(() => {
