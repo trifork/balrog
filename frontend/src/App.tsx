@@ -120,8 +120,10 @@ export function App() {
         </div>
         <SessionTabs sessions={sessions} selected={selected} selectedSessions={simplePage ? selectedSessions : undefined} onSelect={selectSession} />
         <div className="flex items-center gap-2.5 max-[760px]:col-start-2 max-[760px]:row-start-1 max-[760px]:gap-2">
-          {([["activity", "/", "Activity map"], ["reason", "/reason", "Reasons"], ["capabilities", "/capabilities", "Capabilities"]] as const).filter(([key]) => key !== page).map(([key, path, title]) =>
-            <a key={key} className="text-[11px] text-muted hover:text-ink" href={`${path}${window.location.search}`}>{title}</a>)}
+          <nav aria-label="Page navigation" className="flex items-center gap-2">
+            {([["activity", "/", "Activity map"], ["reason", "/reason", "Reasons"], ["capabilities", "/capabilities", "Capabilities"]] as const).filter(([key]) => key !== page).map(([key, path, title]) =>
+              <a key={key} className="rounded-md border border-line px-2 py-1 text-[11px] whitespace-nowrap text-muted hover:border-accent hover:text-ink" href={`${path}${window.location.search}`}>{title}</a>)}
+          </nav>
           <div className="inline-flex items-center gap-2 justify-self-end rounded-[20px] border border-[#d5ac6d24] bg-[#d5ac6d08] px-[9px] py-1 text-[11px] whitespace-nowrap text-[#d5ac6d] group-data-[connection=live]/app:border-[#86cfa124] group-data-[connection=live]/app:bg-[#86cfa108] group-data-[connection=live]/app:text-[#a6d9b8] max-[760px]:px-2 max-[760px]:text-[10px]" role="status"><StatusDot /><span className="max-[480px]:sr-only">{status === "live" ? "Live stream" : status === "connecting" ? "Connecting" : "Reconnecting"}</span></div>
         </div>
       </header>

@@ -68,6 +68,14 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+test.each(["", "?session=s1&keep=yes"])("main page links to reasons and capabilities while preserving query parameters: %s", (search) => {
+  window.history.replaceState(null, "", `/${search}`);
+  render(<App />);
+  const navigation = within(screen.getByRole("navigation", { name: "Page navigation" }));
+  expect(navigation.getByRole("link", { name: "Reasons" }).getAttribute("href")).toBe(`/reason${search}`);
+  expect(navigation.getByRole("link", { name: "Capabilities" }).getAttribute("href")).toBe(`/capabilities${search}`);
+});
+
 test("/reason shows the simple reason table, prompt toggles and file search, with session selection", async () => {
   window.history.replaceState(null, "", "/reason?session=s1&keep=yes");
   const user = userEvent.setup();
