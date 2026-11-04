@@ -4,4 +4,4 @@ focus: trace
 weight: 1
 ---
 
-The default call table contains only id, command, reason, and outcome; its display-only IDs are consecutive integers starting at 1, without improvement estimates, numeric ratings, command alternatives, timestamp columns, or raw Balrog call IDs.
+The requested call table contains only id, command, reason, and outcome. Each id is the exact original Balrog callID from the fixture, without renumbering or shortening. The table omits improvement estimates, numeric ratings, command alternatives, and timestamp columns.

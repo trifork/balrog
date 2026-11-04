@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test } from "vitest";
 import type { LogEvent } from "../../server/log-receiver";
@@ -37,6 +37,49 @@ test("combines reasons per file and shows prompt text below without an explanati
   expect(screen.getByRole("table").compareDocumentPosition(screen.getByRole("group", { name: "Prompts" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
+test("reason tooltips show bold Outcome and Id labels with the real call ID below the outcome", async () => {
+  const user = userEvent.setup();
+  const assessed = { ...events[0], execution: { ...events[0].execution!, outcome: "The frontend routes requests in App.tsx." } };
+  render(<ReasonMap events={[assessed]} selectedSession="" sessions={[]} />);
+  const reason = within(map().getByRole("rowheader", { name: "src/App.tsx" }).closest("tr")!).getByRole("button");
+  await user.hover(reason);
+  const tooltip = within(screen.getByRole("tooltip"));
+  expect(tooltip.getByText(explanation)).toBeTruthy();
+  expect(tooltip.getByText("The frontend routes requests in App.tsx.")).toBeTruthy();
+  expect(tooltip.getByText("Outcome").tagName).toBe("STRONG");
+  expect(tooltip.getByText("Id").tagName).toBe("STRONG");
+  expect(tooltip.getByText("c1")).toBeTruthy();
+  expect(tooltip.getByText("Outcome").compareDocumentPosition(tooltip.getByText("Id")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(reason.getAttribute("aria-describedby")).toBe(screen.getByRole("tooltip").id);
+  await user.unhover(reason);
+  await waitFor(() => expect(screen.queryByRole("tooltip")).toBeNull());
+  expect(map().getAllByRole("columnheader").map((header) => header.textContent)).toEqual(["File", "Reasons"]);
+});
+
+test("shared reasons combine distinct outcomes only for the file and selected prompts", async () => {
+  const user = userEvent.setup();
+  const completed = (event: ReceivedEvent, outcome: string): ReceivedEvent => ({ ...event, execution: { ...event.execution!, outcome } });
+  render(<ReasonMap events={[
+    completed(access(1, "c1", ["app.ts"], explanation), "Found the route."),
+    completed(access(2, "c2", ["other.ts"], explanation), "Found another file."),
+    completed(access(3, "c3", ["app.ts"], explanation, "p2"), "Verified the route."),
+    completed(access(4, "c4", ["app.ts"], explanation, "p2"), "Verified the route."),
+  ]} selectedSession="" sessions={[]} />);
+  const reasonFor = (path: string) => within(map().getByRole("rowheader", { name: path }).closest("tr")!).getByRole("button");
+  await user.hover(reasonFor("app.ts"));
+  expect(within(screen.getByRole("tooltip")).getByText("Found the route.")).toBeTruthy();
+  expect(within(screen.getByRole("tooltip")).getAllByText("Verified the route.")).toHaveLength(1);
+  expect(within(screen.getByRole("tooltip")).getByText("c1, c3, c4")).toBeTruthy();
+  await user.hover(reasonFor("other.ts"));
+  expect(within(screen.getByRole("tooltip")).getByText("Found another file.")).toBeTruthy();
+  expect(within(screen.getByRole("tooltip")).getByText("c2")).toBeTruthy();
+  expect(within(screen.getByRole("tooltip")).queryByText("Found the route.")).toBeNull();
+  await user.click(prompts().getAllByRole("button")[0]);
+  await user.hover(reasonFor("app.ts"));
+  expect(within(screen.getByRole("tooltip")).getByText("c1")).toBeTruthy();
+  expect(within(screen.getByRole("tooltip")).queryByText("Verified the route.")).toBeNull();
+});
+
 test("hovering a reason highlights every matching file entry and its associated prompts", async () => {
   const user = userEvent.setup();
   render(<ReasonMap events={events} selectedSession="" sessions={[]} />);
@@ -46,7 +89,7 @@ test("hovering a reason highlights every matching file entry and its associated 
   expect(reasons.every((reason) => reason.getAttribute("data-highlighted") === "true")).toBe(true);
   expect(toggles.map((toggle) => toggle.getAttribute("data-highlighted"))).toEqual(["true", "true", null]);
   await user.unhover(reasons[0]);
-  expect(toggles.every((toggle) => !toggle.hasAttribute("data-highlighted"))).toBe(true);
+  await waitFor(() => expect(toggles.every((toggle) => !toggle.hasAttribute("data-highlighted"))).toBe(true));
   await user.hover(map().getByRole("button", { name: "No recorded reason" }));
   expect(toggles.map((toggle) => toggle.getAttribute("data-highlighted"))).toEqual([null, null, "true"]);
 });
@@ -134,6 +177,8 @@ test("keyboard focus previews a reason and clicking pins both file and prompt hi
   await user.tab();
   await user.tab();
   expect(document.activeElement).toBe(reason);
+  expect(within(screen.getByRole("tooltip")).getByText("c3")).toBeTruthy();
+  expect(within(screen.getByRole("tooltip")).getByText("No recorded outcome.")).toBeTruthy();
   expect(prompts().getAllByRole("button")[2].getAttribute("data-highlighted")).toBe("true");
   await user.keyboard("{Enter}{Tab}");
   expect(reason.getAttribute("aria-pressed")).toBe("true");
@@ -143,6 +188,7 @@ test("keyboard focus previews a reason and clicking pins both file and prompt hi
   await user.click(reason);
   await user.keyboard("{Escape}");
   await user.unhover(reason);
+  expect(screen.queryByRole("tooltip")).toBeNull();
   expect(reason.getAttribute("aria-pressed")).toBe("false");
   expect(prompts().getAllByRole("button").every((toggle) => !toggle.hasAttribute("data-highlighted"))).toBe(true);
 });
@@ -175,19 +221,21 @@ test("late assessments update reasons and prompt associations without mixing ses
   const assessment = {
     ...first, id: 3, activityUpdates: undefined,
     event: { ...first.event, tag: "balrog.tool.assessed", pluginID: "balrog-retro" } as unknown as LogEvent,
-    execution: { ...first.execution!, reason: explanation },
+    execution: { ...first.execution!, reason: explanation, outcome: "Located the frontend routes." },
   };
   rerender(<ReasonMap events={[first, other, assessment]} selectedSession="s1" sessions={[]} />);
   const reason = map().getByRole("button", { name: "Understand the routing." });
-  expect(reason.title).toBe(explanation);
   expect(map().queryByRole("button", { name: "No recorded reason" })).toBeNull();
   expect(screen.queryByText("Unrelated session reason.")).toBeNull();
   expect(prompts().getAllByRole("button")).toHaveLength(1);
   await user.hover(reason);
+  expect(within(screen.getByRole("tooltip")).getByText("Located the frontend routes.")).toBeTruthy();
+  expect(within(screen.getByRole("tooltip")).getByText("same-call")).toBeTruthy();
   expect(prompts().getByRole("button").getAttribute("data-highlighted")).toBe("true");
 });
 
-test("an unassessed later read of the same file does not erase the submitted reason for an earlier call", () => {
+test("an unassessed later read of the same file does not erase the submitted reason for an earlier call", async () => {
+  const user = userEvent.setup();
   const first = access(1, "read-original", ["README.md"], null, "p1");
   const review = access(2, "read-review", ["README.md"], null, "p2");
   const assessment = {
@@ -196,9 +244,10 @@ test("an unassessed later read of the same file does not erase the submitted rea
     execution: { ...first.execution!, reason: explanation },
   };
   const { rerender } = render(<ReasonMap events={[first, review, assessment]} selectedSession="" sessions={[]} />);
-  expect(map().getByRole("button", { name: "Understand the routing." }).title).toBe(explanation);
+  await user.hover(map().getByRole("button", { name: "Understand the routing." }));
+  expect(within(screen.getByRole("tooltip")).getByText(explanation)).toBeTruthy();
   expect(map().getByRole("button", { name: "No recorded reason" })).toBeTruthy();
   rerender(<ReasonMap events={[first, review, assessment, { ...review, id: 4, activityUpdates: undefined }]} selectedSession="" sessions={[]} />);
-  expect(map().getByRole("button", { name: "Understand the routing." }).title).toBe(explanation);
+  expect(within(screen.getByRole("tooltip")).getByText(explanation)).toBeTruthy();
   expect(map().getByRole("button", { name: "No recorded reason" })).toBeTruthy();
 });
