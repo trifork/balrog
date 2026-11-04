@@ -168,6 +168,34 @@ async function request(socket: WebSocket, body: unknown): Promise<ViewerResponse
   return JSON.parse(String(data));
 }
 
+test("session parent relationships reach HTTP, snapshots and live viewer updates", async (t) => {
+  const { analyzer, viewer, origin, connect } = await startViewer(t);
+  const parent = nativeEvent("session.created", "parent", 100, { title: "Main session" });
+  analyzer.process(parent);
+  viewer.publish(parent);
+  const socket = await connect();
+  const initial = await request(socket, { type: "snapshot.request" });
+  assert.equal(initial.type, "snapshot");
+
+  const child = nativeEvent("session.created", "child", 200, { parentID: "parent", title: "Explore files" });
+  const next = once(socket, "message");
+  analyzer.process(child);
+  viewer.publish(child);
+  const [data] = await next;
+  const live = JSON.parse(String(data)) as ViewerResponse;
+  assert.equal(live.type, "event");
+  if (live.type !== "event") return;
+  assert.equal(live.message.session?.parentID, "parent");
+
+  const snapshot = await request(socket, { type: "snapshot.request" });
+  assert.equal(snapshot.type, "snapshot");
+  if (snapshot.type !== "snapshot") return;
+  assert.equal(snapshot.sessions.find((session) => session.sessionID === "child")?.parentID, "parent");
+  const response = await fetch(`${origin}/api/sessions`);
+  const sessions = await response.json();
+  assert.equal(sessions.find((session: { sessionID: string }) => session.sessionID === "child")?.parentID, "parent");
+});
+
 test("heatmap HTTP and WebSocket responses expose confirmed grep matched files", async (t) => {
   const { origin, publish, connect } = await startViewer(t);
   publish("session.prompt", { text: "Find the implementation" });
