@@ -53,6 +53,8 @@ test("retro registers a bundled explicit-only skill and defaults to the caller s
   assert.match(prompts[0].text, /Snapshot cutoff: \d+/);
   assert.match(prompts[0].text, /entire recorded conversation/);
   assert.match(prompts[0].text, /one analysis pass/);
+  assert.match(prompts[0].text, /Return only high-level recommendations/);
+  assert.doesNotMatch(prompts[0].text, /Show the call-level table/);
   assert.equal(prompts.length, 1);
 });
 
@@ -94,7 +96,7 @@ test("retro assesses the whole conversation in one pass without per-tool model c
   assert.match(content, /Order by `startedAt` ascending/);
   assert.match(content, /\[assets\/retro-output\.md\]\(assets\/retro-output\.md\)/);
   const template = await readFile(new URL("../skills/retro/assets/retro-output.md", import.meta.url), "utf8");
-  assert.ok(template.includes("| id | command | capability | reason | outcome |"));
+  assert.doesNotMatch(template, /\| id \| command/);
   assert.doesNotMatch(template, /\| id \|[^\n]*(?:improvement|complexity|gain)/);
   assert.doesNotMatch(content, /\| id \|[^\n]*(?:improvement|complexity|gain)/);
   assert.doesNotMatch(content, /\b(?:score|scores|scoring)\b|suggested command|alternative command/i);
@@ -102,9 +104,8 @@ test("retro assesses the whole conversation in one pass without per-tool model c
   assert.match(content, /Assign consecutive numeric IDs starting at 1/);
   assert.match(content, /Use the displayed `id` values for evidence references/);
   assert.doesNotMatch(content, /using related call IDs/);
-  assert.ok(template.includes("| improvement | complexity | gain | evidence | validation |"));
-  assert.match(template, /## Session and evidence/);
-  assert.match(template, /## Recommendation/);
+  assert.match(template, /# Recommendations/);
+  assert.match(template, /Complexity:.*gain:.*Validate by/);
   assert.match(content, /`LOW`, `MEDIUM`, or `HIGH`/);
   assert.match(content, /AGENTS\.md/);
   assert.match(content, /Co-locate tightly related implementation, settings, and tests by feature/);
@@ -116,7 +117,7 @@ test("retro assesses the whole conversation in one pass without per-tool model c
   assert.doesNotMatch(content, /assessments and suggestions are not written back|Requires read-only HTTP/);
   assert.match(content, /Report whether publication succeeded/);
   assert.doesNotMatch(content, /Preserve `reason` and `outcome` verbatim|A missing outcome stays `null`/);
-  assert.match(template, /retrospective assessments/);
+  assert.match(template, /Detailed call assessments belong in Balrog/);
 });
 
 test("retro writes purposes directly and qualifies uncertainty based on evidence, not assessment timing", async (t) => {
@@ -126,8 +127,7 @@ test("retro writes purposes directly and qualifies uncertainty based on evidence
   assert.match(content, /Qualify actual uncertainty and use `unknown`/);
   assert.match(content, /"reason": "Find setup instructions\."/);
   assert.doesNotMatch(content, /"reason": "Inferred:|Distinguish an explicit explanation from an inference/);
-  const template = await readFile(new URL("../skills/retro/assets/retro-output.md", import.meta.url), "utf8");
-  assert.match(template, /evidence-supported purpose; unknown if unsupported/);
+  assert.match(content, /`reason`: describe why the call was needed/);
 });
 
 test("retro publishes a stable technical capability separately from the reason for using it", async (t) => {
@@ -141,8 +141,7 @@ test("retro publishes a stable technical capability separately from the reason f
   assert.match(content, /environment.*recorded evidence/);
   assert.match(content, /"capability": "Read file"/);
   assert.match(content, /Publish capabilities, reasons, and outcomes/);
-  const template = await readFile(new URL("../skills/retro/assets/retro-output.md", import.meta.url), "utf8");
-  assert.match(template, /technical operation; unknown if unsupported/);
+  assert.match(content, /Send the redacted assessments prepared internally/);
 });
 
 test("retro lists activated skills, assesses task fit, and proposes bounded skill-use changes", async (t) => {
@@ -165,8 +164,21 @@ test("retro lists activated skills, assesses task fit, and proposes bounded skil
   assert.match(content, /availability and documented relevance are verified/);
   assert.match(content, /Carry actionable skill-use recommendations into the higher-level improvements/);
   assert.match(content, /Do not enable, disable, install, or remove skills during `\/retro`/);
-  assert.match(template, /Skill-activation coverage:/);
-  assert.match(template, /## Activated skills/);
-  assert.ok(template.includes("| skill | activation evidence | task fit and contribution | future use |"));
+  assert.doesNotMatch(template, /Skill-activation coverage:|## Activated skills/);
   assert.match(template, /including actionable skill-use changes/);
+});
+
+test("retro keeps detailed analysis in Balrog and returns bounded recommendations even if publication fails", async (t) => {
+  const { skills } = await setup(t);
+  const content = skills[0].content;
+  const template = await readFile(new URL("../skills/retro/assets/retro-output.md", import.meta.url), "utf8");
+  assert.match(content, /at most three prioritized recommendations/);
+  assert.match(content, /200 words or fewer/);
+  assert.match(content, /one short publication-status line/);
+  assert.match(content, /only when it materially limits confidence/);
+  assert.match(content, /internal unless the user\s+explicitly requests them/);
+  assert.match(content, /A publication failure does not trigger a full report dump/);
+  assert.match(template, /No changes are justified by the available evidence/);
+  assert.match(template, /published assessment count, skipped because no calls remain, or failure and reason/);
+  assert.doesNotMatch(template, /## Commands|\| skill \||\| evidence \|/);
 });
