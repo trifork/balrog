@@ -66,6 +66,33 @@ test("only opens the inspector after a prompt column is selected and closes it o
   expect(panel()).toBeNull();
 });
 
+test("shows clickable chronological subagent labels beside their starting prompts, even without files", async () => {
+  const user = userEvent.setup();
+  const events = [
+    message(1, { id: "1", sessionID: "parent", text: "First prompt", files: [] }),
+    message(5, { id: "2", sessionID: "parent", text: "Second prompt", files: [] }),
+  ];
+  const starts = [
+    { sessionID: "child-1", parentID: "parent", label: "S1", timestamp: 1_700_000_000_002, startEventID: 2 },
+    { sessionID: "child-2", parentID: "parent", label: "S2", timestamp: 1_700_000_000_003, startEventID: 3 },
+    { sessionID: "child-3", parentID: "parent", label: "S3", timestamp: 1_700_000_000_006, startEventID: 6 },
+  ];
+  const onSelect = vi.fn();
+  const props = { events, sessions: [], selectedSession: "parent", subagentStarts: starts, onSelectSubagent: onSelect };
+  const { rerender } = render(<FileActivity {...props} />);
+  const first = within(promptHeader("01"));
+  expect(first.getAllByRole("link").map((link) => link.textContent)).toEqual(["S1", "S2"]);
+  const link = first.getByRole("link", { name: /S1: child-1/ });
+  expect(link.getAttribute("href")).toContain("session=child-1");
+  expect(link.getAttribute("title")).toContain("started");
+  await user.click(link);
+  expect(onSelect).toHaveBeenCalledWith("child-1");
+  expect(within(promptHeader("02")).getByRole("link", { name: /S3: child-3/ })).toBeTruthy();
+  rerender(<FileActivity {...props} cutoffEventID={2} />);
+  expect(within(promptHeader("01")).getAllByRole("link").map((link) => link.textContent)).toEqual(["S1"]);
+  expect(within(promptHeader("02")).queryByRole("link")).toBeNull();
+});
+
 test("mobile inspector opens and focuses only after selecting a prompt, including after All prompts", async () => {
   vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: true })));
   const user = userEvent.setup();

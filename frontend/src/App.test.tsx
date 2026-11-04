@@ -68,6 +68,134 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+test.each(["/", "/reason", "/capabilities"])("%s shows child sessions and supports navigation back to the parent", async (path) => {
+  window.history.replaceState(null, "", `${path}?session=s1&keep=yes`);
+  state.sessions[1] = { ...state.sessions[1], parentID: "s1" };
+  state.sessions.push({ ...state.sessions[1], sessionID: "nested", parentID: "s2", title: "Nested subagent" });
+  const user = userEvent.setup();
+  render(<App />);
+
+  const tabs = within(screen.getByRole("tablist", { name: "Sessions" }));
+  expect(tabs.getByRole("tab", { name: "First session" })).toBeTruthy();
+  expect(tabs.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["All sessions", "First session"]);
+  let related = within(screen.getByRole("navigation", { name: "Related sessions" }));
+  expect(related.getByText("Subagents (1):")).toBeTruthy();
+  expect(related.queryByRole("link", { name: "Nested subagent" })).toBeNull();
+  expect(related.getByRole("link", { name: "Second session" }).getAttribute("href")).toBe("/?session=s2&keep=yes");
+  await user.click(related.getByRole("link", { name: "Second session" }));
+  expect(window.location.pathname).toBe("/");
+  expect(window.location.search).toBe("?session=s2&keep=yes");
+  expect(screen.getByRole("tab", { name: "Activity map", selected: true })).toBeTruthy();
+  expect(screen.getByRole("tabpanel", { name: "Second session" })).toBeTruthy();
+  expect(screen.getByRole("contentinfo", { name: "Bottom bar" })).toBeTruthy();
+  expect(screen.queryByRole("table", { name: "File access reasons" })).toBeNull();
+  expect(screen.queryByRole("table", { name: "Attempted capabilities" })).toBeNull();
+  related = within(screen.getByRole("navigation", { name: "Related sessions" }));
+  expect(related.getByText("Subagent: Second session")).toBeTruthy();
+  expect(related.getByText("Parent session:")).toBeTruthy();
+  expect(related.getByRole("link", { name: "Nested subagent" })).toBeTruthy();
+  await user.click(related.getByRole("link", { name: "First session" }));
+  expect(window.location.search).toBe("?session=s1&keep=yes");
+  expect(tabs.getByRole("tab", { name: "First session", selected: true })).toBeTruthy();
+});
+
+test("related sessions update live and use IDs when titles or parents are missing", () => {
+  window.history.replaceState(null, "", "/?session=s1");
+  const { rerender } = render(<App />);
+  expect(screen.queryByRole("navigation", { name: "Related sessions" })).toBeNull();
+  state.sessions.push({ ...state.sessions[0], sessionID: "child", parentID: "s1", title: undefined });
+  rerender(<App />);
+  expect(screen.queryByRole("tab", { name: "child" })).toBeNull();
+  const related = within(screen.getByRole("navigation", { name: "Related sessions" }));
+  fireEvent.click(related.getByRole("link", { name: "child" }), { ctrlKey: true });
+  expect(window.location.search).toBe("?session=s1");
+  fireEvent.click(related.getByRole("link", { name: "child" }));
+  state.sessions = state.sessions.filter((session) => session.sessionID !== "s1");
+  rerender(<App />);
+  expect(within(screen.getByRole("navigation", { name: "Related sessions" })).getByRole("link", { name: "s1" })).toBeTruthy();
+});
+
+test("all-session and multi-session selections do not show unrelated child links", () => {
+  state.sessions[1] = { ...state.sessions[1], parentID: "s1" };
+  render(<App />);
+  expect(screen.queryByRole("navigation", { name: "Related sessions" })).toBeNull();
+  act(() => {
+    window.history.replaceState(null, "", "/reason?session=s1&session=s2");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  expect(screen.queryByRole("navigation", { name: "Related sessions" })).toBeNull();
+});
+
+test("subagent prompt badges open the child activity map and match the related-session labels", async () => {
+  window.history.replaceState(null, "", "/?session=s1&keep=yes");
+  state.sessions[1] = { ...state.sessions[1], parentID: "s1" };
+  state.events = [
+    { ...message(1, "session.prompt", "s1"), activityUpdates: activityUpdates(1, {
+      id: "parent-prompt", sessionID: "s1", text: "Delegate review", files: [],
+    }) },
+    { ...message(2, "session.created", "s2"), event: {
+      tag: "session.created", sessionID: "s2", "session.created": {
+        type: "session.created", created: 1_700_000_000_002,
+        data: { sessionID: "s2", parentID: "s1" },
+      },
+    } as unknown as LogEvent },
+  ];
+  const user = userEvent.setup();
+  render(<App />);
+  const related = within(screen.getByRole("navigation", { name: "Related sessions" }));
+  expect(related.getByRole("link", { name: /S1.*Second session/ })).toBeTruthy();
+  const header = within(screen.getByRole("columnheader", { name: "Prompt 01: Delegate review" }));
+  await user.click(header.getByRole("link", { name: /S1: Second session/ }));
+  expect(window.location.search).toBe("?session=s2&keep=yes");
+  expect(screen.getByRole("tabpanel", { name: "Second session" })).toBeTruthy();
+  expect(screen.getByRole("contentinfo", { name: "Bottom bar" })).toBeTruthy();
+  expect(screen.queryByRole("tab", { name: /Second session/ })).toBeNull();
+});
+
+test("subagent navigation replaces the parent's activity and timeline, including history navigation", async () => {
+  window.history.replaceState(null, "", "/?session=s1");
+  state.sessions[1] = { ...state.sessions[1], parentID: "s1" };
+  state.events = [
+    { ...command(1, "s1"), activityUpdates: activityUpdates(1, { id: "parent-prompt", sessionID: "s1", text: "Parent work", files: [
+      { path: "parent.ts", action: "read", outcome: "success", callID: "call-1" },
+    ] }) },
+    { ...command(2, "s2"), activityUpdates: activityUpdates(2, { id: "child-prompt", sessionID: "s2", text: "Child work", files: [
+      { path: "child.ts", action: "read", outcome: "success", callID: "call-2" },
+    ] }) },
+    command(3, "s1"),
+    command(4, "s2"),
+  ];
+  const user = userEvent.setup();
+  render(<App />);
+  const timeline = () => within(screen.getByRole("contentinfo", { name: "Bottom bar" }));
+  const markers = () => timeline().getAllByRole("button", { name: /^Jump to (command|prompt)/ }).map((button) => button.dataset.eventId);
+  const heatmap = () => within(screen.getByRole("region", { name: "File activity heatmap" }));
+  expect(markers()).toEqual(["1", "3"]);
+  expect(heatmap().getByRole("button", { name: /^parent.ts/ })).toBeTruthy();
+  expect(heatmap().queryByRole("button", { name: /^child.ts/ })).toBeNull();
+  await user.type(screen.getByRole("searchbox", { name: "Find a file or folder" }), "parent");
+  // Pause the parent before navigating; the child must start with its own live timeline.
+  await user.click(timeline().getByRole("button", { name: "Pause live playback" }));
+  await user.click(within(screen.getByRole("navigation", { name: "Related sessions" })).getByRole("link", { name: "Second session" }));
+  expect(markers()).toEqual(["2", "4"]);
+  expect((screen.getByRole("searchbox", { name: "Find a file or folder" }) as HTMLInputElement).value).toBe("");
+  expect(heatmap().getByRole("button", { name: /^child.ts/ })).toBeTruthy();
+  expect(heatmap().queryByRole("button", { name: /^parent.ts/ })).toBeNull();
+  expect(timeline().getByRole("button", { name: "Pause live playback" }).getAttribute("aria-pressed")).toBe("true");
+  act(() => {
+    window.history.replaceState(null, "", "/?session=s1");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  expect(markers()).toEqual(["1", "3"]);
+  expect(heatmap().getByRole("button", { name: /^parent.ts/ })).toBeTruthy();
+  act(() => {
+    window.history.replaceState(null, "", "/?session=s2");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  expect(markers()).toEqual(["2", "4"]);
+  expect(screen.getByRole("tabpanel", { name: "Second session" })).toBeTruthy();
+});
+
 test.each(["", "?session=s1&keep=yes"])("shows all three view tabs while preserving query parameters: %s", (search) => {
   window.history.replaceState(null, "", `/${search}`);
   render(<App />);

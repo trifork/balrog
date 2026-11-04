@@ -48,6 +48,31 @@ test("analyzer tracks session metadata and updates titles on rename", () => {
   assert.equal(analyzer.getSession("missing"), undefined);
 });
 
+test("analyzer preserves parent relationships from native and wrapped creation events", () => {
+  const analyzer = new SessionAnalyzer();
+  analyzer.process(timedEvent("session.created", "child-1", 1, {
+    parentID: "parent", title: "First subagent",
+  }));
+  analyzer.process(logEvent("session.created", "child-2", {
+    parentID: "parent", title: "Second subagent",
+  }));
+  analyzer.process(logEvent("session.renamed", "child-1", { title: "Renamed subagent" }));
+  analyzer.process(logEvent("session.tool.success", "child-1", {
+    metadata: { sessionID: "another-session" },
+  }));
+  assert.equal(analyzer.getSession("child-1")?.parentID, "parent");
+  assert.equal(analyzer.getSession("child-1")?.title, "Renamed subagent");
+  assert.equal(analyzer.getSessions().find((session) => session.sessionID === "child-2")?.parentID, "parent");
+});
+
+test("analyzer ignores empty and self-referencing parent IDs", () => {
+  const analyzer = new SessionAnalyzer();
+  for (const parentID of [undefined, "", "  ", "session-1"]) {
+    analyzer.process(logEvent("session.created", "session-1", { parentID }));
+  }
+  assert.equal(analyzer.getSession("session-1")?.parentID, undefined);
+});
+
 test("analyzer can read session IDs and titles from the event payload", () => {
   const analyzer = new SessionAnalyzer();
   analyzer.process({

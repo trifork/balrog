@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type Keyboa
 import { FileActivity } from "./FileActivity";
 import { Icon } from "./Icon";
 import { SessionTabs } from "./SessionTabs";
+import { SessionRelations } from "./SessionRelations";
 import { StatusDot } from "./StatusDot";
 import { useViewer } from "./useViewer";
 import { PermissionRequests } from "./PermissionRequests";
@@ -10,6 +11,7 @@ import { Timeline } from "./Timeline";
 import { collectActivity, collectHeatmapActivity } from "./file-activity-model";
 import { ReasonMap } from "./ReasonMap";
 import { Capabilities } from "./Capabilities";
+import { collectSubagentStarts } from "./subagent-model";
 
 const views = [
   { key: "activity", path: "/", title: "Activity map" },
@@ -24,12 +26,14 @@ const sessionsFromURL = () => {
 
 export function App() {
   const { events, sessions, heatmaps, status, error, permissions, replyPermission } = useViewer();
+  const subagentStarts = useMemo(() => collectSubagentStarts(events), [events]);
   const [selectedSessions, setSelectedSessions] = useState(sessionsFromURL);
   const [pathname, setPathname] = useState(() => window.location.pathname);
   const reasonsPage = pathname === "/reason" || pathname === "/reason/";
   const capabilitiesPage = pathname === "/capabilities" || pathname === "/capabilities/";
   const simplePage = reasonsPage || capabilitiesPage;
   const selected = selectedSessions?.length === 1 ? selectedSessions[0] : "";
+  const subagent = sessions.find((session) => session.sessionID === selected)?.parentID ? selected : undefined;
   const simpleEvents = useMemo(() => selectedSessions === null ? events : events.filter((message) =>
     selectedSessions.includes(message.session?.sessionID ?? message.event.sessionID ?? "")), [events, selectedSessions]);
   const selectionKey = JSON.stringify(selectedSessions);
@@ -100,21 +104,24 @@ export function App() {
     return () => window.removeEventListener("popstate", onPopState);
   }, [resumeLive]);
 
-  const selectSession = (sessionID: string, toggle = false) => {
+  const selectSession = (sessionID: string, toggle = false, targetPath = pathname) => {
     let next = sessionID ? [sessionID] : null;
     if (simplePage && toggle && sessionID) {
       const current = selectedSessions ?? sessions.map((session) => session.sessionID);
       next = current.includes(sessionID) ? current.filter((id) => id !== sessionID) : [...current, sessionID];
     }
-    if (JSON.stringify(next) === selectionKey) return;
+    if (JSON.stringify(next) === selectionKey && targetPath === pathname) return;
     const url = new URL(window.location.href);
+    url.pathname = targetPath;
     if (next === null) url.searchParams.delete("session");
     else {
       url.searchParams.set("session", next[0] ?? "");
       for (const id of next.slice(1)) url.searchParams.append("session", id);
     }
     window.history.pushState(null, "", url);
+    setPathname(targetPath);
     setSelectedSessions(next);
+    setHighlightedEventIDs(new Set());
     resumeLive();
   };
 
@@ -167,6 +174,7 @@ export function App() {
               selectView(view);
             }}>{view.title}</a>)}
         </nav>
+        <SessionRelations sessions={sessions} selected={selected} starts={subagentStarts} onSelect={(id, path) => selectSession(id, false, path)} />
         <div className="viewer-view-panel" id="view-workspace" role="tabpanel" aria-labelledby={`view-tab-${page}`}>
         {error && <p role="alert" className="viewer-error">{error}</p>}
         {!simplePage && permissions.length > 0 && <div className="max-h-[35dvh] shrink-0 overflow-auto px-7 pt-4 [&>.read-approvals]:mb-0 max-[760px]:px-3">
@@ -174,10 +182,10 @@ export function App() {
         </div>}
         {reasonsPage ? <ReasonMap key={selectionKey} events={simpleEvents} sessions={sessions} selectedSession={selected} sessionLabel={sessionLabel} />
           : capabilitiesPage ? <Capabilities key={selectionKey} events={simpleEvents} sessions={sessions} selectedSession={selected} sessionLabel={sessionLabel} />
-          : <FileActivity events={events} sessions={sessions} selectedSession={selected} activityPrompts={activityPrompts} activeEventID={activeEventID} cutoffEventID={cutoffEventID} jumpRequest={jumpRequest} onPromptNavigate={navigatePrompt} onFileEventsChange={setHighlightedEventIDs} />}
+           : <FileActivity key={subagent} events={sessionEvents} sessions={sessions} selectedSession={selected} activityPrompts={activityPrompts} subagentStarts={subagentStarts} onSelectSubagent={(id) => selectSession(id, false, "/")} activeEventID={activeEventID} cutoffEventID={cutoffEventID} jumpRequest={jumpRequest} onPromptNavigate={navigatePrompt} onFileEventsChange={setHighlightedEventIDs} />}
         </div>
       </main>
-      {!simplePage && <footer className="viewer-timeline min-w-0 border-t border-line bg-frame" aria-label="Bottom bar"><Timeline events={timelineEvents} evidenceEvents={events} prompts={prompts} activeEventID={activeEventID} centerRequest={promptJump} highlightedEventIDs={highlightedEventIDs} onSelect={scrubToEvent} onActivate={inspectEvent} followingLive={followingLive} onToggleLive={toggleLive} /></footer>}
+      {!simplePage && <footer className="viewer-timeline min-w-0 border-t border-line bg-frame" aria-label="Bottom bar"><Timeline key={selected} events={timelineEvents} evidenceEvents={sessionEvents} prompts={prompts} activeEventID={activeEventID} centerRequest={promptJump} highlightedEventIDs={highlightedEventIDs} onSelect={scrubToEvent} onActivate={inspectEvent} followingLive={followingLive} onToggleLive={toggleLive} /></footer>}
       {!simplePage && <ReadWarning requests={permissions} live={status === "live"} />}
     </div>
   );

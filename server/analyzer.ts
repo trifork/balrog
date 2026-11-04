@@ -6,6 +6,7 @@ import { OUTCOME_HINT_METADATA, OUTCOME_TOOL_ID } from "../plugin/shared/tracing
 
 export interface SessionSummary {
   sessionID: string;
+  parentID?: string;
   title?: string;
   pluginID?: string;
   apiVersion?: string;
@@ -120,6 +121,10 @@ export class SessionAnalyzer {
 
     const title = this.extractTitle(tag, data);
     if (title) session.title = title;
+    if (tag === "session.created") {
+      const parentID = nonEmptyString(data?.["parentID"]);
+      if (parentID && parentID !== sessionID) session.parentID = parentID;
+    }
 
     const callID = this.getCallID(data);
     if (callID) {
