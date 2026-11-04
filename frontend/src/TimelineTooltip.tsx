@@ -13,6 +13,8 @@ interface Props {
   onPointerLeave: () => void;
 }
 
+const sourceLabels = { agent: "agent-provided", automatic: "automatic", retrospective: "retrospective" };
+
 export function TimelineTooltip({ anchorRef, message, marker, position, onPointerEnter, onPointerLeave }: Props) {
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<{ left: number; top: number; arrowLeft: number } | null>(null);
@@ -50,7 +52,7 @@ export function TimelineTooltip({ anchorRef, message, marker, position, onPointe
       window.visualViewport?.removeEventListener("resize", place);
       window.visualViewport?.removeEventListener("scroll", place);
     };
-  }, [anchorRef, message.id, marker.label, marker.summary, marker.reason, marker.outcome, position]);
+  }, [anchorRef, message.id, marker.label, marker.summary, marker.reason, marker.reasonSource, position]);
 
   return createPortal(
     <div ref={tooltipRef} id="timeline-summary" role="tooltip"
@@ -66,7 +68,6 @@ export function TimelineTooltip({ anchorRef, message, marker, position, onPointe
       </div>
       {!marker.isPrompt && <dl className="m-0 space-y-2 text-[11px] leading-relaxed">
         <div><dt className="font-medium text-muted">Reason</dt><dd className="m-0 whitespace-pre-wrap wrap-anywhere">{marker.reason ?? "null"}</dd></div>
-        <div><dt className="font-medium text-muted">Outcome</dt><dd className="m-0 whitespace-pre-wrap wrap-anywhere">{marker.outcome ?? "null"}</dd></div>
       </dl>}
       <p className="m-0 mt-2 border-t border-line pt-2 text-[11px] leading-relaxed whitespace-pre-wrap wrap-anywhere text-[#c7c7d0]">{marker.summary}</p>
       <span className="absolute -bottom-[5px] size-2 rotate-45 border-r border-b border-[#45464d] bg-[#1d1e22]" style={{ left: (placement?.arrowLeft ?? 12) - 4 }} aria-hidden="true" />

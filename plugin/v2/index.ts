@@ -3,6 +3,7 @@ import { Recorder } from "../shared/recorder.js";
 import { SensitiveReadPermissions } from "./permissions.js";
 import { registerRetro } from "./retro.js";
 import { registerEvents } from "./events.js";
+import { registerLiveToolExplanations } from "./live-explanations.js";
 
 export default Plugin.define({
   id: "opencode-balrog",
@@ -19,8 +20,10 @@ export default Plugin.define({
     });
 
     const permissions = new SensitiveReadPermissions(ctx, recorder.pluginID, ctx.options.logEndpoint ?? "http://localhost:5001/log");
+    let explanations: Awaited<ReturnType<typeof registerLiveToolExplanations>> | undefined;
     try {
       await permissions.start();
+      if (ctx.options.liveToolExplanations === true) explanations = await registerLiveToolExplanations(ctx, recorder);
       await registerRetro(ctx);
       const stopRecording = registerEvents({
         context: ctx,
@@ -32,11 +35,19 @@ export default Plugin.define({
         try {
           await stopRecording();
         } finally {
-          await permissions.close();
+          try {
+            await explanations?.dispose();
+          } finally {
+            await permissions.close();
+          }
         }
       };
     } catch (error) {
-      await permissions.close();
+      try {
+        await explanations?.dispose();
+      } finally {
+        await permissions.close();
+      }
       throw error;
     }
   },

@@ -291,10 +291,10 @@
   .heatmap-scope[data-prompt-headings] > th {
     position: sticky;
     top: 0;
-    z-index: 3;
+    z-index: 6;
   }
   .heatmap-scope[data-prompt-headings] > th:first-child {
-    z-index: 5;
+    z-index: 7;
   }
   .heatmap .heatmap-prompt-title {
     min-width: var(--cell-width);
@@ -327,9 +327,19 @@
     letter-spacing: 0;
     text-transform: none;
   }
+  .heatmap-folder > th,
+  .heatmap-folder > td {
+    transform: translateY(var(--folder-offset, 0px));
+    clip-path: inset(var(--folder-clip, 0px) 0 0);
+    background: var(--color-panel);
+  }
+  .heatmap-folder > td {
+    position: relative;
+    z-index: 3;
+  }
   .heatmap-folder th {
     position: sticky;
-    z-index: 2;
+    z-index: 4;
     height: 34px;
     background: var(--color-panel);
     text-align: left;

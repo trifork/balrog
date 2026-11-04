@@ -50,6 +50,7 @@ export interface ToolIntentLog extends LogMetadata {
       id: string;
       tool: string;
       reason: string;
+      source?: "agent";
     };
   };
 }
@@ -63,8 +64,9 @@ export interface ToolOutcomeLog extends LogMetadata {
       sessionID: string;
       assistantMessageID: string;
       id: string;
-      reportCallID: string;
+      reportCallID?: string;
       outcome: string;
+      source?: "agent" | "automatic";
     };
   };
 }
@@ -74,7 +76,7 @@ export interface ToolAssessmentLog extends LogMetadata {
   "balrog.tool.assessed": {
     type: "balrog.tool.assessed";
     created: number;
-    data: { sessionID: string; id: string; reason: string; outcome: string; capability?: string };
+    data: { sessionID: string; id: string; reason?: string; outcome: string; capability?: string };
   };
 }
 

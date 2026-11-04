@@ -1,6 +1,7 @@
 import { eventKind } from "./EventCard";
 import { collectActivity, promptNumber, type ActivityPrompt } from "./file-activity-model";
 import type { ReceivedEvent } from "./useViewer";
+import type { ExplanationSource } from "../../plugin/shared/tracing";
 
 type TimelineIcon = "hammer" | "fileEdit" | "filePlus" | "fileMinus" | "terminal" | "prompt";
 type FileIcon = Extract<TimelineIcon, "fileEdit" | "filePlus" | "fileMinus">;
@@ -13,7 +14,7 @@ export interface TimelineMarker {
   isPrompt: boolean;
   promptNumber?: string;
   reason?: string | null;
-  outcome?: string | null;
+  reasonSource?: ExplanationSource;
 }
 
 const icons: Record<TimelineIcon, { label: string; color: string }> = {
@@ -168,7 +169,6 @@ function isReportingOnly(execution: NonNullable<ReceivedEvent["execution"]>) {
   return /^\s*(?:return\s+)?(?:await\s+)?(?:REPORT|Promise\.all\(\[\s*REPORT(?:\s*,\s*REPORT)*\s*,?\s*\]\))\s*;?\s*$/.test(reports);
 }
 
-/** Prompt boundaries and one marker per command, enriched from even out-of-scope outcome events. */
 export function commandTimeline(source: ReceivedEvent[], evidence: ReceivedEvent[] = source, prompts: ActivityPrompt[] = collectActivity(source, "")) {
   const latest = new Map<string, NonNullable<ReceivedEvent["execution"]>>();
   for (const message of evidence) {
@@ -192,7 +192,7 @@ export function commandTimeline(source: ReceivedEvent[], evidence: ReceivedEvent
       ...marker,
       label: execution.command.name ?? "Unknown command",
       reason: execution.reason,
-      outcome: execution.outcome,
+      reasonSource: execution.reasonSource,
     };
   });
   return { events, markers };

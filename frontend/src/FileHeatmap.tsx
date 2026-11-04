@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import type { FileTouch } from "../../server/file-activity";
 import { Icon } from "./Icon";
 import { fileActivityRows, fileName, groupWorkspacePaths, heatLevel, matchesMode, metricLabel, operationCount, promptNumber, type ActivityMode, type ActivityPrompt } from "./file-activity-model";
 import { FileActivityTooltip } from "./FileActivityTooltip";
+import { useStickyHeatmapFolders } from "./useStickyHeatmapFolders";
 
 interface Props {
   prompts: ActivityPrompt[];
@@ -23,9 +24,10 @@ export function FileHeatmap({ prompts, paths, mode, selectedKey, selectedFile, s
   const [fileColumnPinned, setFileColumnPinned] = useState(true);
   const scroll = useRef<HTMLDivElement>(null);
   const table = useRef<HTMLTableElement>(null);
-  const groups = groupWorkspacePaths(prompts, paths).map((group) => ({
+  const groups = useMemo(() => groupWorkspacePaths(prompts, paths).map((group) => ({
     ...group, rows: fileActivityRows(group.paths, group.workspace, collapsed),
-  }));
+  })), [prompts, paths, collapsed]);
+  const stickyInset = useStickyHeatmapFolders(scroll, table, groups);
   const visiblePaths = groups.flatMap((group) => group.rows.flatMap((row) => row.kind === "file" ? [row.path] : []));
   const selectedIndex = prompts.findIndex((prompt) => prompt.key === selectedKey);
   const tabStop = focused && visiblePaths.includes(focused.path) && prompts.some((prompt) => prompt.key === focused.key)
@@ -39,7 +41,7 @@ export function FileHeatmap({ prompts, paths, mode, selectedKey, selectedFile, s
     if (rect.right > bounds.right - 16) scroll.current.scrollLeft += rect.right - bounds.right + 24;
     if (rect.left < bounds.left + labelWidth) scroll.current.scrollLeft -= bounds.left + labelWidth - rect.left + 12;
     if (vertically) {
-      const headerHeight = table.current.querySelector(".heatmap-scope[data-prompt-headings]")?.getBoundingClientRect().height ?? 0;
+      const headerHeight = stickyInset(element);
       if (rect.bottom > bounds.bottom - 12) scroll.current.scrollTop += rect.bottom - bounds.bottom + 20;
       if (rect.top < bounds.top + headerHeight) scroll.current.scrollTop -= bounds.top + headerHeight - rect.top + 12;
     }

@@ -21,6 +21,21 @@ export function timelineLayout(count: number, activeIndex: number, viewportWidth
   return { positions, scales, width };
 }
 
+export function visibleTimelineIndices(positions: readonly number[], range: { start: number; end: number }, retained: readonly number[] = []) {
+  const buffer = timelinePromptWidth + 32;
+  let left = 0;
+  let right = positions.length;
+  while (left < right) {
+    const middle = Math.floor((left + right) / 2);
+    if (positions[middle] < range.start - buffer) left = middle + 1;
+    else right = middle;
+  }
+  const indices = new Set<number>();
+  for (let index = left; index < positions.length && positions[index] <= range.end + buffer; index++) indices.add(index);
+  for (const index of retained) if (index >= 0 && index < positions.length) indices.add(index);
+  return [...indices].sort((a, b) => a - b);
+}
+
 export function moveTimelinePosition(positions: readonly number[], index: number, delta: number) {
   if (positions.length < 2) return 0;
   index = Math.max(0, Math.min(positions.length - 1, index));

@@ -6,6 +6,7 @@ interface Props {
   events: ReceivedEvent[];
   activeEventID?: number;
   centerRequest?: { id: number };
+  followingLive?: boolean;
   onSelect: (id: number) => void;
   onActivate?: (id: number) => void;
   markerWidths?: readonly number[];
@@ -21,14 +22,17 @@ interface Drag {
   started: boolean;
 }
 
-export function useTimelineScrubber({ events, activeEventID, centerRequest, onSelect, onActivate, markerWidths }: Props) {
+export function useTimelineScrubber({ events, activeEventID, centerRequest, followingLive, onSelect, onActivate, markerWidths }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const handleRef = useRef<HTMLButtonElement>(null);
   const dragRef = useRef<Drag | null>(null);
   const wheelRef = useRef(0);
+  const selectionFrameRef = useRef<number | null>(null);
+  const pendingSelectionRef = useRef<{ position: number; force: boolean; speed?: number } | null>(null);
   const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [viewportWidth, setViewportWidth] = useState(0);
   const [latestOutside, setLatestOutside] = useState(false);
+  const [visibleRange, setVisibleRange] = useState({ start: 0, end: 0 });
   const [dragging, setDragging] = useState(false);
   const [scrubSpeed, setScrubSpeed] = useState(1);
   const [tooltipEventID, setTooltipEventID] = useState<number>();
@@ -41,16 +45,44 @@ export function useTimelineScrubber({ events, activeEventID, centerRequest, onSe
   const layout = useMemo(() => timelineLayout(events.length, activeIndex, viewportWidth, markerWidths), [events.length, activeIndex, viewportWidth, markerWidths]);
   const inputRef = useRef({ events, onSelect, onActivate, layout });
   const firstEventID = events[0]?.id;
+  const navigationRef = useRef({ firstEventID, activeEventID, centerRequest, followingLive });
+  const publishedEventIDRef = useRef<number | undefined>(undefined);
+
+  const cancelPendingSelection = useCallback(() => {
+    if (selectionFrameRef.current !== null) cancelAnimationFrame(selectionFrameRef.current);
+    selectionFrameRef.current = null;
+    pendingSelectionRef.current = null;
+    positionRef.current = indexRef.current;
+  }, []);
 
   useLayoutEffect(() => {
+    if (activeEventID !== undefined && activeIndex !== indexRef.current) cancelPendingSelection();
     inputRef.current = { events, onSelect, onActivate, layout };
     indexRef.current = activeIndex;
-    if (Math.round(positionRef.current) !== activeIndex) positionRef.current = activeIndex;
-  }, [events, onSelect, onActivate, layout, activeIndex]);
+    if (!pendingSelectionRef.current && Math.round(positionRef.current) !== activeIndex) positionRef.current = activeIndex;
+  }, [events, onSelect, onActivate, layout, activeIndex, activeEventID, cancelPendingSelection]);
+
+  useLayoutEffect(() => {
+    const previous = navigationRef.current;
+    const acknowledged = publishedEventIDRef.current !== undefined && publishedEventIDRef.current === activeEventID;
+    const external = previous.firstEventID !== firstEventID || previous.centerRequest !== centerRequest
+      || (previous.activeEventID !== activeEventID && !acknowledged)
+      || (previous.followingLive !== followingLive && !(acknowledged && followingLive === false));
+    navigationRef.current = { firstEventID, activeEventID, centerRequest, followingLive };
+    if (external) cancelPendingSelection();
+    if (external || acknowledged) publishedEventIDRef.current = undefined;
+  });
+
+  useEffect(() => cancelPendingSelection, [cancelPendingSelection]);
 
   const updateFade = useCallback(() => {
     const viewport = viewportRef.current;
     const positions = inputRef.current.layout.positions;
+    if (viewport) {
+      const start = viewport.scrollLeft;
+      const end = start + viewport.clientWidth;
+      setVisibleRange((previous) => previous.start === start && previous.end === end ? previous : { start, end });
+    }
     if (!viewport || !positions.length) {
       setLatestOutside(false);
       return;
@@ -118,11 +150,31 @@ export function useTimelineScrubber({ events, activeEventID, centerRequest, onSe
     showTooltip(input.events[next].id, Boolean(dragRef.current?.started));
     if (!force && next === indexRef.current) return;
     indexRef.current = next;
+    publishedEventIDRef.current = input.events[next].id;
     input.onSelect(input.events[next].id);
   }, [showTooltip]);
 
+  const flushPendingSelection = useCallback(() => {
+    if (selectionFrameRef.current !== null) cancelAnimationFrame(selectionFrameRef.current);
+    selectionFrameRef.current = null;
+    const pending = pendingSelectionRef.current;
+    pendingSelectionRef.current = null;
+    if (pending) {
+      if (pending.speed !== undefined) setScrubSpeed(pending.speed);
+      selectIndex(pending.position, pending.force);
+    }
+  }, [selectIndex]);
+
+  const scheduleSelection = useCallback((position: number, force = false, speed?: number) => {
+    positionRef.current = Math.max(0, Math.min(inputRef.current.events.length - 1, position));
+    pendingSelectionRef.current = { position: positionRef.current, force: force || Boolean(pendingSelectionRef.current?.force), speed };
+    if (selectionFrameRef.current === null) selectionFrameRef.current = requestAnimationFrame(flushPendingSelection);
+  }, [flushPendingSelection]);
+
   const endDrag = useCallback(() => {
     const drag = dragRef.current;
+    if (drag?.started) flushPendingSelection();
+    else cancelPendingSelection();
     dragRef.current = null;
     setDragging(false);
     setScrubSpeed(1);
@@ -130,7 +182,7 @@ export function useTimelineScrubber({ events, activeEventID, centerRequest, onSe
     if (drag && viewport?.hasPointerCapture(drag.pointerID)) viewport.releasePointerCapture(drag.pointerID);
     const message = inputRef.current.events[indexRef.current];
     if (drag?.started && message) showTooltip(message.id);
-  }, [showTooltip]);
+  }, [showTooltip, cancelPendingSelection, flushPendingSelection]);
 
   const jumpToIndex = useCallback((index: number, center = false) => {
     endDrag();
@@ -157,8 +209,8 @@ export function useTimelineScrubber({ events, activeEventID, centerRequest, onSe
     drag.started = true;
     setDragging(true);
     handleRef.current?.focus({ preventScroll: true });
-    selectIndex(positionRef.current, true);
-  }, [selectIndex]);
+    scheduleSelection(positionRef.current, true);
+  }, [scheduleSelection]);
 
   useEffect(() => {
     endDrag();
@@ -180,7 +232,7 @@ export function useTimelineScrubber({ events, activeEventID, centerRequest, onSe
       const steps = Math.trunc(wheelRef.current / 12);
       if (!steps) return;
       wheelRef.current -= steps * 12;
-      selectIndex(indexRef.current + steps);
+      scheduleSelection(Math.round(positionRef.current) + steps);
     };
     viewport.addEventListener("wheel", onWheel, { passive: false });
     const onBlur = () => {
@@ -192,10 +244,11 @@ export function useTimelineScrubber({ events, activeEventID, centerRequest, onSe
       viewport.removeEventListener("wheel", onWheel);
       window.removeEventListener("blur", onBlur);
     };
-  }, [selectIndex, endDrag, hideTooltip]);
+  }, [scheduleSelection, endDrag, hideTooltip]);
 
   const startDrag = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !event.isPrimary || !events.length || dragRef.current) return;
+    cancelPendingSelection();
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     const marker = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("[data-event-id]") : null;
@@ -229,8 +282,7 @@ export function useTimelineScrubber({ events, activeEventID, centerRequest, onSe
     const speed = Math.max(0.08, 1 / (1 + distance / 48));
     const delta = event.clientX - drag.clientX;
     drag.clientX = event.clientX;
-    setScrubSpeed(Math.round(speed * 100) / 100);
-    selectIndex(moveTimelinePosition(inputRef.current.layout.positions, positionRef.current, delta * speed));
+    scheduleSelection(moveTimelinePosition(inputRef.current.layout.positions, positionRef.current, delta * speed), false, Math.round(speed * 100) / 100);
   };
 
   const stopDrag = (event: PointerEvent<HTMLDivElement>) => {
@@ -280,5 +332,5 @@ export function useTimelineScrubber({ events, activeEventID, centerRequest, onSe
 
   const tooltipVisible = tooltipEventID !== undefined && tooltipEventID === events[activeIndex]?.id;
 
-  return { viewportRef, handleRef, activeIndex, layout, latestOutside, dragging, scrubSpeed, tooltipVisible, hideTooltip, endDrag, jumpToIndex, activateIndex, updateFade, startDrag, moveDrag, stopDrag, onKeyDown };
+  return { viewportRef, handleRef, activeIndex, layout, latestOutside, visibleRange, dragging, scrubSpeed, tooltipVisible, hideTooltip, endDrag, jumpToIndex, activateIndex, updateFade, startDrag, moveDrag, stopDrag, onKeyDown };
 }

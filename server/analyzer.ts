@@ -2,7 +2,7 @@ import type { LogEvent } from "./log-receiver.js";
 import { eventMetadata } from "./event-metadata.js";
 import { SessionActivityAnalyzer, type SessionActivity } from "./session-activity.js";
 import { SessionSkillAnalyzer, type SkillActivation } from "./session-skills.js";
-import { OUTCOME_HINT_METADATA, OUTCOME_TOOL_ID } from "../plugin/shared/tracing.js";
+import { OUTCOME_HINT_METADATA, OUTCOME_TOOL_ID, type ExplanationSource } from "../plugin/shared/tracing.js";
 
 export interface SessionSummary {
   sessionID: string;
@@ -29,8 +29,10 @@ export interface ToolExecution {
   startedAt: number | null;
   completedAt: number | null;
   reason: string | null;
+  reasonSource?: ExplanationSource;
   capability?: string;
   outcome: string | null;
+  outcomeSource?: ExplanationSource;
   result: unknown;
 }
 
@@ -136,20 +138,41 @@ export class SessionAnalyzer {
     }
     if (tag === "balrog.tool.outcome" && callID) {
       const outcome = nonEmptyString(data?.["outcome"]);
-      if (outcome) this.ensureExecution(sessionID, callID).outcome = outcome;
+      const execution = this.ensureExecution(sessionID, callID);
+      const automatic = data?.["source"] === "automatic";
+      if (outcome && execution.outcomeSource !== "retrospective"
+        && (!automatic || execution.outcome === null || execution.outcomeSource === "automatic")) {
+        execution.outcome = outcome;
+        if (automatic) execution.outcomeSource = "automatic";
+        else if (data?.["source"] === "agent") execution.outcomeSource = "agent";
+        else delete execution.outcomeSource;
+      }
     }
     if (tag === "balrog.tool.assessed" && callID) {
       const execution = this.executions.get(sessionID)?.get(callID);
       if (execution) {
-        execution.reason = nonEmptyString(data?.["reason"]) ?? execution.reason;
-        execution.outcome = nonEmptyString(data?.["outcome"]) ?? execution.outcome;
+        const reason = nonEmptyString(data?.["reason"]);
+        const outcome = nonEmptyString(data?.["outcome"]);
+        if (reason) {
+          execution.reason = reason;
+          execution.reasonSource = "retrospective";
+        }
+        if (outcome) {
+          execution.outcome = outcome;
+          execution.outcomeSource = "retrospective";
+        }
         const capability = nonEmptyString(data?.["capability"]);
         if (capability) execution.capability = capability;
       }
     }
     if (tag === "balrog.tool.intent" && callID) {
       const execution = this.ensureExecution(sessionID, callID);
-      execution.reason = nonEmptyString(data?.["reason"]) ?? execution.reason;
+      const reason = nonEmptyString(data?.["reason"]);
+      if (reason && execution.reasonSource !== "retrospective") {
+        execution.reason = reason;
+        if (data?.["source"] === "agent") execution.reasonSource = "agent";
+        else delete execution.reasonSource;
+      }
       execution.command.name = nonEmptyString(data?.["tool"]) ?? execution.command.name;
     }
     if (tag === "session.tool.input.started" && callID) {

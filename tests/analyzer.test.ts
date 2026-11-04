@@ -238,3 +238,42 @@ test("analyzer removes only the footer attested by metadata for the matching cal
   assert.deepEqual(calls.get("call-3")?.result, content);
   assert.equal(content.length, 2);
 });
+
+test("live explanation provenance survives replay and remains scoped to its call and session", () => {
+  const events = [
+    timedEvent("balrog.tool.intent", "live", 10, { id: "call-1", tool: "read", reason: "Check setup.", source: "agent" }),
+    timedEvent("session.tool.called", "live", 11, { id: "call-1", input: { path: "README.md", __balrogReason: "Check setup." } }),
+    timedEvent("session.tool.success", "live", 12, { id: "call-1", content: "Setup instructions" }),
+    timedEvent("balrog.tool.outcome", "live", 13, { id: "call-1", outcome: "Tool completed. Result excerpt: “Setup instructions”", source: "automatic" }),
+    timedEvent("session.tool.called", "other", 14, { id: "call-1", input: {} }),
+  ];
+  const analyzer = new SessionAnalyzer();
+  events.forEach((event) => analyzer.process(event));
+  const execution = analyzer.getToolExecutions("live")[0];
+  assert.equal(execution.reason, "Check setup.");
+  assert.equal(execution.reasonSource, "agent");
+  assert.equal(execution.outcomeSource, "automatic");
+  assert.deepEqual(execution.command.args, { path: "README.md" });
+  assert.equal(execution.result, "Setup instructions");
+  assert.equal(analyzer.getToolExecutions("other")[0].outcome, null);
+  const replay = new SessionAnalyzer();
+  JSON.parse(JSON.stringify(events)).forEach((event: LogEvent) => replay.process(event));
+  assert.deepEqual(replay.getToolExecutions("live"), analyzer.getToolExecutions("live"));
+});
+
+test("retrospective assessments replace live explanations and withstand delayed live events", () => {
+  const analyzer = new SessionAnalyzer();
+  const events = [
+    timedEvent("session.tool.called", "live", 10, { id: "call-1", name: "read", input: {} }),
+    timedEvent("balrog.tool.outcome", "live", 12, { id: "call-1", outcome: "Tool completed.", source: "automatic" }),
+    timedEvent("balrog.tool.assessed", "live", 20, { id: "call-1", reason: "Find setup requirements.", outcome: "Found Node.js requirements." }),
+    timedEvent("balrog.tool.intent", "live", 11, { id: "call-1", reason: "Check setup.", source: "agent" }),
+    timedEvent("balrog.tool.outcome", "live", 12, { id: "call-1", outcome: "Tool completed.", source: "automatic" }),
+  ];
+  events.forEach((event) => analyzer.process(event));
+  const execution = analyzer.getToolExecutions("live")[0];
+  assert.equal(execution.reason, "Find setup requirements.");
+  assert.equal(execution.outcome, "Found Node.js requirements.");
+  assert.equal(execution.reasonSource, "retrospective");
+  assert.equal(execution.outcomeSource, "retrospective");
+});

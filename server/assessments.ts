@@ -2,12 +2,13 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { SessionAnalyzer } from "./analyzer.js";
 import type { ToolAssessmentLog } from "./log-receiver.js";
 
-interface Assessment { callID: string; reason: string; outcome: string; capability?: string }
+interface Assessment { callID: string; reason?: string; outcome: string; capability?: string }
 
 function isAssessment(value: unknown): value is Assessment {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const entry = value as Record<string, unknown>;
-  return ["callID", "reason", "outcome"].every((key) => typeof entry[key] === "string" && entry[key].trim())
+  return ["callID", "outcome"].every((key) => typeof entry[key] === "string" && entry[key].trim())
+    && (!Object.hasOwn(entry, "reason") || (typeof entry.reason === "string" && Boolean(entry.reason.trim())))
     && (!Object.hasOwn(entry, "capability") || (typeof entry.capability === "string" && Boolean(entry.capability.trim())));
 }
 
@@ -60,7 +61,7 @@ export async function receiveAssessments(
   const assessments: unknown = body && typeof body === "object" && !Array.isArray(body)
     ? (body as Record<string, unknown>)["assessments"] : undefined;
   if (!Array.isArray(assessments) || !assessments.every(isAssessment)) {
-    reply(400, { error: "Expected assessments containing non-empty callID, reason and outcome strings; capability must be a non-empty string when supplied" });
+    reply(400, { error: "Expected assessments containing non-empty callID and outcome strings; reason and capability must be non-empty strings when supplied" });
     return;
   }
   const calls = new Map(analyzer.getToolExecutions(sessionID).map((execution) => [execution.callID, execution]));
@@ -72,13 +73,19 @@ export async function receiveAssessments(
     reply(404, { error: "Tool call not found in target session" });
     return;
   }
+  if (assessments.some((entry) => !calls.get(entry.callID)?.reason?.trim() && entry.reason === undefined)) {
+    reply(400, { error: "A non-empty reason is required for calls without a recorded reason" });
+    return;
+  }
   try {
     for (const { callID, reason, outcome, capability } of assessments) {
       const created = Date.now();
       record({
         tag: "balrog.tool.assessed", sessionID, pluginID: "balrog-retro", apiVersion: "v2", created,
         "balrog.tool.assessed": { type: "balrog.tool.assessed", created, data: {
-          sessionID, id: callID, reason, outcome, ...(capability === undefined ? {} : { capability }),
+          sessionID, id: callID, outcome,
+          ...(calls.get(callID)?.reason?.trim() ? {} : { reason }),
+          ...(capability === undefined ? {} : { capability }),
         } },
       });
     }

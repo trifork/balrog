@@ -54,6 +54,9 @@ test("retro registers a bundled explicit-only skill and defaults to the caller s
   assert.match(prompts[0].text, /entire recorded conversation/);
   assert.match(prompts[0].text, /one analysis pass/);
   assert.match(prompts[0].text, /Return only high-level recommendations/);
+  assert.match(prompts[0].text, /Reuse every non-empty recorded reason verbatim/);
+  assert.match(prompts[0].text, /infer a reason only when none is recorded/);
+  assert.doesNotMatch(prompts[0].text, /Infer each call's reason and outcome/);
   assert.doesNotMatch(prompts[0].text, /Show the call-level table/);
   assert.equal(prompts.length, 1);
 });
@@ -119,14 +122,19 @@ test("retro assesses the whole conversation in one pass without per-tool model c
   assert.match(template, /Detailed call assessments belong in Balrog/);
 });
 
-test("retro writes purposes directly and qualifies uncertainty based on evidence, not assessment timing", async (t) => {
+test("retro reuses recorded reasons and infers only missing purposes without rewriting original intent", async (t) => {
   const { skills } = await setup(t);
   const content = skills[0].content;
   assert.match(content, /without an `Inferred:` prefix/);
   assert.match(content, /Qualify actual uncertainty and use `unknown`/);
   assert.match(content, /"reason": "Find setup instructions\."/);
   assert.doesNotMatch(content, /"reason": "Inferred:|Distinguish an explicit explanation from an inference/);
-  assert.match(content, /`reason`: describe why the call was needed/);
+  assert.match(content, /Reuse every non-empty recorded reason verbatim/);
+  assert.match(content, /including reasons from previous retrospectives/);
+  assert.match(content, /Do not regenerate, paraphrase, or correct an existing reason/);
+  assert.match(content, /Only when no non-empty reason is recorded, describe why the call was needed/);
+  assert.match(content, /omit `reason` from its POST entry/);
+  assert.match(content, /preserves the original reason and its provenance/);
 });
 
 test("retro publishes a stable technical capability separately from the reason for using it", async (t) => {

@@ -669,11 +669,13 @@ conversation in the caller's session. The command attaches the skill explicitly
 and captures a cutoff so the review does not grade its own activity.
 
 The skill retrieves one conversation snapshot and reads the entire chronological
-investigation. It assigns each call a capability, reason, and outcome after the fact, using
-the task, preceding discussion, arguments, and raw results. These are explicitly
-labeled retrospective assessments, not original agent reports. Unsupported
-purposes or results remain unknown; pending calls remain pending. Historical
-annotations are supporting evidence, not independently verified conclusions.
+investigation. It **reuses every existing non-empty reason verbatim**, including
+reasons from earlier retrospectives, and infers a reason only when none is recorded.
+It assesses each call's capability and outcome using the task, preceding discussion,
+arguments, and raw results. Newly inferred values are retrospective assessments,
+not original agent reports; reused reasons keep their original provenance.
+Unsupported missing purposes or results remain unknown; pending calls remain pending.
+Other historical annotations are supporting evidence, not independently verified conclusions.
 
 The default call table contains a numeric `id` (1, 2, 3, ...), command, capability,
 reason, and outcome. A separate table covers higher-level improvements with `LOW`,
@@ -692,8 +694,9 @@ examples, feature-local documentation, generated navigation aids, and justified
 file or module restructuring. The review considers dependent calls together and
 does not treat an honest intermediate finding as a failed investigation. It
 assesses the completed trace without requiring the original agent to supply
-reasons or outcomes. The skill publishes calculated values in one batch so the
-timeline can display them. Original tool calls and results remain unchanged.
+reasons or outcomes. The skill publishes new assessments in one batch for the
+retrospective views. The timeline shows reasons only, never outcomes. Original
+tool calls, recorded reasons, and results remain unchanged.
 
 The retrospective proposes repository changes and validation steps;
 applying them requires separate approval. Balrog must be reachable at
@@ -712,12 +715,18 @@ Assessments use `POST /api/sessions/<encoded-session-id>/assessments` with
 ```
 
 The response is `{ "sessionID": "ses_example", "updated": 1 }`. Each entry must
-name an existing call in that session and have non-empty reason and outcome
-strings. Invalid or duplicate entries reject the batch before any writes.
+name an existing call in that session and have a non-empty outcome string.
+Omit `reason` when the call already has one; the server preserves the recorded
+reason verbatim, even if a client supplies a replacement. For a call without a
+recorded reason, a non-empty inferred `reason` is required. Supplied `reason` and
+`capability` values must be non-empty strings. Invalid, duplicate, or missing-reason
+entries reject the batch before any writes.
 Requests are limited to 1 MiB and the viewer's loopback host rules; browser
 requests must use the same origin. Balrog stores separate `balrog.tool.assessed`
-events through its existing SQLite recording path and broadcasts live timeline
-updates. Later assessments replace displayed values for the same calls.
+events through its existing SQLite recording path and broadcasts viewer
+updates. Later assessments update capabilities and outcomes but reuse existing
+reasons. Reused reasons are omitted from persisted assessment events, preserving
+their original provenance during replay instead of relabeling live reasons as retrospective.
 The report states whether publication succeeded. Recommendation text is not stored.
 
 The source is `skills/retro/SKILL.md`; its portable Node helper is
@@ -725,17 +734,62 @@ The source is `skills/retro/SKILL.md`; its portable Node helper is
 bundled skill. Other compatible harnesses can load the same skill directory;
 they must supply a current OpenCode session ID or ask for one when unavailable.
 
-### Passive recording
+### Passive recording and low-cost live explanations
 
-The V2 recorder subscribes to native session events without changing tool
-schemas, arguments, results, or model instructions. Tools no longer require
-`__balrogReason`. The live `balrog_reportOutcome` reporting tool and pending-call
-reminders have been removed. No reason/outcome bookkeeping adds model turns to
-the working session. The sensitive-file permission integration is unchanged.
+By default, the V2 recorder subscribes to native session events without changing
+tool schemas, arguments, results, or model instructions. Reasons and outcomes
+remain empty until `/retro` supplies assessments or explicit annotations arrive.
+The sensitive-file permission integration is unchanged.
 
-Reload the plugin and restart the viewer after updating. Existing saved intent
-and outcome events remain readable for historical compatibility. New assessments
-happen only when `/retro` is requested, through the assessment endpoint above.
+To enable live explanations, set the boolean `liveToolExplanations` option:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": [
+    {
+      "package": "/absolute/path/to/balrog/plugin/v2",
+      "options": {
+        "liveToolExplanations": true
+      }
+    }
+  ]
+}
+```
+
+Merge this option into your existing plugin entry. V2 reloads config changes
+automatically; `/reload` forces a reload. Restart the Balrog viewer after updating
+its code.
+
+In this mode, compatible tools gain one optional `__balrogReason` input field
+asking for a short purpose, not private reasoning. The plugin removes that field
+before execution and preserves the original tool's validation and decoding.
+Purposes are best-effort: missing explanations do not fail tools, inject reminders,
+or trigger retries. Recorded purposes are limited to 160 characters. Unsupported
+or conflicting schemas are left unchanged.
+
+Live explanations record **reasons only**, never outcomes. Tool completion,
+failures, and raw results remain available as recorded evidence, but are not
+turned into automatic outcome summaries. Tool results and errors remain unchanged,
+and slow or failed annotation delivery does not block tools.
+
+Timeline tooltips show reasons and distinguish **agent-provided** reasons from
+**retrospective** assessments. Outcomes are never shown on the timeline, including
+outcomes in older recordings and later `/retro` assessments. Outcomes remain part
+of retrospective analysis and the data available to the Reasons and Capabilities
+pages; their existing views are unchanged.
+
+Execution objects retain optional `reasonSource` and `outcomeSource` fields
+(`agent`, `automatic`, or `retrospective`) in HTTP, WebSocket, and conversation
+responses for compatibility. New outcomes are supplied only by `/retro`.
+`/retro` fills missing reasons rather than recalculating existing ones. Historical
+annotations retain their recorded interpretation; no saved data is deleted.
+
+This mode makes **no additional model requests** and registers no
+`balrog_reportOutcome` tool, pending-report reminders, or result footers. Added
+model tokens are the small schema field and any purpose the model emits; actual
+cost depends on the provider, tool catalog, and workload. No fixed cost percentage
+is guaranteed. V1 recording is unchanged.
 
 ### Persist recordings
 

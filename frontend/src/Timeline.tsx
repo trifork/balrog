@@ -4,7 +4,7 @@ import { Icon } from "./Icon";
 import { commandTimeline } from "./timelineMarkers";
 import { TimelineTooltip } from "./TimelineTooltip";
 import { TimelineControls } from "./TimelineControls";
-import { timelinePromptWidth } from "./timelineLayout";
+import { timelinePromptWidth, visibleTimelineIndices } from "./timelineLayout";
 import { useTimelineScrubber } from "./useTimelineScrubber";
 import type { ReceivedEvent } from "./useViewer";
 import type { ActivityPrompt } from "./file-activity-model";
@@ -25,18 +25,32 @@ interface Props {
 export function Timeline({ events: sourceEvents, evidenceEvents = sourceEvents, prompts, activeEventID, centerRequest, highlightedEventIDs, onSelect, onActivate, followingLive = true, onToggleLive }: Props) {
   const { events, markers } = useMemo(() => commandTimeline(sourceEvents, evidenceEvents, prompts), [sourceEvents, evidenceEvents, prompts]);
   const markerWidths = useMemo(() => markers.map((marker) => marker.isPrompt ? timelinePromptWidth : marker.icon ? 14 : 1), [markers]);
-  const { viewportRef, handleRef, activeIndex, layout, latestOutside, dragging, scrubSpeed, tooltipVisible, hideTooltip, endDrag, jumpToIndex, activateIndex, updateFade, startDrag, moveDrag, stopDrag, onKeyDown } = useTimelineScrubber({ events, activeEventID, centerRequest, onSelect, onActivate, markerWidths });
+  const { viewportRef, handleRef, activeIndex, layout, latestOutside, visibleRange, dragging, scrubSpeed, tooltipVisible, hideTooltip, endDrag, jumpToIndex, activateIndex, updateFade, startDrag, moveDrag, stopDrag, onKeyDown } = useTimelineScrubber({ events, activeEventID, centerRequest, followingLive, onSelect, onActivate, markerWidths });
   const [hoveredEventID, setHoveredEventID] = useState<number>();
+  const [focusedEventID, setFocusedEventID] = useState<number>();
   const hoverAnchorRef = useRef<HTMLButtonElement | null>(null);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeEvent = events[activeIndex];
   const activeFileRelated = Boolean(activeEvent && !markers[activeIndex].isPrompt && highlightedEventIDs?.has(activeEvent.id));
   const hoveredIndex = !dragging ? events.findIndex((message) => message.id === hoveredEventID) : -1;
+  const focusedIndex = events.findIndex((message) => message.id === focusedEventID);
+  const visibleIndices = useMemo(() => visibleTimelineIndices(layout.positions, visibleRange, [activeIndex, hoveredIndex, focusedIndex]), [layout.positions, visibleRange, activeIndex, hoveredIndex, focusedIndex]);
   const tooltipIndex = hoveredIndex >= 0 ? hoveredIndex : tooltipVisible ? activeIndex : -1;
   const tooltipEvent = events[tooltipIndex];
   const promptCommands = useMemo(() => markers.flatMap((marker, index) => marker.isPrompt ? [index] : []), [markers]);
   const previousPrompt = promptCommands.reduce((previous, index) => index < activeIndex ? index : previous, -1);
   const nextPrompt = promptCommands.find((index) => index > activeIndex) ?? -1;
+  const offscreenRelated = useMemo(() => {
+    const hidden = { before: [] as number[], after: [] as number[] };
+    if (visibleRange.end <= visibleRange.start || !highlightedEventIDs?.size) return hidden;
+    events.forEach((message, index) => {
+      if (markers[index].isPrompt || !highlightedEventIDs.has(message.id)) return;
+      const halfWidth = markerWidths[index] * layout.scales[index] / 2;
+      if (layout.positions[index] - halfWidth < visibleRange.start) hidden.before.push(index);
+      if (layout.positions[index] + halfWidth > visibleRange.end) hidden.after.push(index);
+    });
+    return hidden;
+  }, [events, markers, markerWidths, layout, visibleRange, highlightedEventIDs]);
 
   useEffect(() => {
     setHoveredEventID(undefined);
@@ -81,17 +95,30 @@ export function Timeline({ events: sourceEvents, evidenceEvents = sourceEvents, 
     onToggleLive?.();
   };
 
+  const revealRelated = (index: number) => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    endDrag();
+    hideTooltip();
+    setHoveredEventID(undefined);
+    viewport.scrollLeft = Math.max(0, layout.positions[index] - viewport.clientWidth / 2);
+    updateFade();
+  };
+
   return (
     <div className="group/timeline flex h-full min-w-0 items-center gap-3 px-4 max-[760px]:gap-2 max-[760px]:px-3 max-[480px]:px-2.5" data-dragging={dragging} role="group" aria-label="Event timeline">
       <span className="w-16 shrink-0 font-mono text-[9px] tracking-[1.4px] text-muted uppercase max-[760px]:hidden">{dragging && scrubSpeed < 1 ? `Fine ${Math.round(scrubSpeed * 100)}%` : "Timeline"}</span>
       <TimelineControls previousPrompt={previousPrompt} nextPrompt={nextPrompt} followingLive={followingLive} hasEvents={events.length > 0} onNavigate={(index) => { setHoveredEventID(undefined); jumpToIndex(index, true); }} onToggleLive={onToggleLive ? toggleLive : undefined} />
-      <span id="timeline-instructions" className="sr-only">Amber borders mark commands related to the selected file in the current prompt scope. Hover a prompt for its summary or a command for its reason and outcome. Click an event or press Enter or Space to pause playback at that point and update the heatmap without opening the event stream. Expand Event stream separately to inspect events. Drag anywhere to scrub. Release and re-grab to continue from the current event. Drag vertically away from the bar for finer control. Use arrow keys to step or Home and End to jump. Scrubbing pauses playback; use Go live to resume.</span>
+      <span id="timeline-instructions" className="sr-only">Amber borders mark commands related to the selected file in the current prompt scope. Amber edge indicators count related commands outside the visible timeline; activate one to reveal them without changing playback or file selection. Hover a prompt for its summary or a command for its reason. Click an event or press Enter or Space to pause playback at that point and update the heatmap without opening the event stream. Expand Event stream separately to inspect events. Drag anywhere to scrub. Release and re-grab to continue from the current event. Drag vertically away from the bar for finer control. Use arrow keys to step or Home and End to jump. Scrubbing pauses playback; use Go live to resume.</span>
       <div className="relative isolate h-full min-w-0 flex-1">
         <div ref={viewportRef} className="h-full w-full cursor-ew-resize touch-none overflow-x-auto overflow-y-hidden overscroll-contain select-none group-data-[dragging=true]/timeline:cursor-grabbing [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          onFocusCapture={(event) => { if (event.target instanceof HTMLElement) setFocusedEventID(Number(event.target.closest<HTMLElement>("[data-event-id]")?.dataset.eventId)); }}
+          onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setFocusedEventID(undefined); }}
           onScroll={updateFade} onPointerDown={startDrag} onPointerMove={moveDrag} onPointerUp={stopDrag} onPointerCancel={stopDrag} onLostPointerCapture={stopDrag}>
           {events.length ? <div className="relative h-full" style={{ width: layout.width }}>
             <div className="pointer-events-none absolute top-1/2 h-px bg-line" style={{ left: layout.positions[0], width: layout.positions[events.length - 1] - layout.positions[0] }} />
-            {events.map((message, index) => {
+            {visibleIndices.map((index) => {
+              const message = events[index];
               const marker = markers[index];
               const targetWidth = marker.isPrompt ? timelinePromptWidth + 4 : 28;
               const before = index ? layout.positions[index] - layout.positions[index - 1] : targetWidth;
@@ -126,6 +153,17 @@ export function Timeline({ events: sourceEvents, evidenceEvents = sourceEvents, 
           <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-8 max-w-[20%] bg-linear-to-r from-frame to-transparent" aria-hidden="true" />
           <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-8 max-w-[20%] bg-linear-to-l from-frame to-transparent opacity-0 transition-opacity duration-150 data-[visible=true]:opacity-100 motion-reduce:transition-none" data-visible={latestOutside} aria-hidden="true" />
         </>}
+        {(["before", "after"] as const).map((direction) => {
+          const hidden = offscreenRelated[direction];
+          if (!hidden.length) return null;
+          const earlier = direction === "before";
+          const label = `Show ${hidden.length} related ${hidden.length === 1 ? "command" : "commands"} ${earlier ? "earlier" : "later"} in the timeline`;
+          return <button key={direction} type="button" data-related-overflow={direction} aria-label={label} title={label}
+            className={`absolute top-1/2 z-30 flex h-6 -translate-y-1/2 items-center gap-0.5 rounded-[4px] border border-[#e6b47980] bg-[#2b241c] px-1 font-mono text-[9px] text-[#e6b479] shadow-[0_0_10px_#e6b47918] hover:border-[#e6b479] hover:bg-[#3b2e20] hover:text-[#f5cf9f] ${earlier ? "left-0" : "right-0"}`}
+            onClick={() => revealRelated(earlier ? hidden[hidden.length - 1] : hidden[0])}>
+            {earlier && <Icon name="left" className="size-3" />}<span>{hidden.length}</span>{!earlier && <Icon name="right" className="size-3" />}
+          </button>;
+        })}
       </div>
       <div className="flex shrink-0 items-center gap-3 font-mono text-[10px] text-muted tabular-nums max-[760px]:gap-2">
         {activeEvent && <time className="text-[#c4c4ce] max-[1000px]:hidden" dateTime={new Date(activeEvent.receivedAt).toISOString()}>{new Date(activeEvent.receivedAt).toLocaleTimeString()}</time>}

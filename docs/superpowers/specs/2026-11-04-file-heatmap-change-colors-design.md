@@ -5,8 +5,10 @@
 Color each file/prompt cell by its confirmed, unreverted recorded changes:
 green for creations, blue for edits and writes, and red for deletions. Cells
 with multiple change types show proportional segments using the candle palette.
-Read-only activity and cells without confirmed changes use a neutral gray scale.
-The Reads filter always uses the neutral scale.
+Successful reads use muted amber when a cell has no confirmed changes. Empty
+or inactive cells retain the neutral gray scale. The Reads filter highlights
+successful reads in amber. Confirmed change colors take precedence over reads
+in All activity.
 
 Keep the existing operation counts and fixed intensity buckets (0, 1, 2–3,
 4–7, 8+). Failed, pending, and reverted actions do not contribute change colors;
