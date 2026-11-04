@@ -255,7 +255,13 @@ any recorded event without inspecting raw tool arguments. These replace the old
 `fileActivity` and `fileActivityUpdates` fields.
 
 The dashboard centers **File heatmap**: a live heatmap with observed
-files as rows and recorded prompts as columns. Choose a session using the header
+files as rows and recorded prompts as columns. Three persistent view tabs below
+the header switch between **Activity map**, **Capabilities**, and **Reasons**,
+showing one view at a time without reconnecting the event stream. The selected
+view is highlighted. Arrow keys, Home, and End navigate the view tabs, and direct
+URLs and browser Back/Forward navigation continue to work. Switching views
+preserves session query parameters and returns the Activity map to live playback.
+Choose a session using the header
 tabs, or use **All sessions** to see activity across sessions. Search full file
 paths, collapse folders, and switch between **All activity**, **Reads**, and
 **Changes**. Cell intensity counts successful file operations on a fixed scale
@@ -378,7 +384,7 @@ when replaying a SQLite recording.
 
 ### File access reasons
 
-Open `/reason` or choose **Reasons** in the header for a simpler file/reason table.
+Open `/reason` or choose the **Reasons** tab for a simpler file/reason table.
 Each file lists the distinct reasons from enabled prompts. Prompt toggles at the
 bottom show their recorded text. Click to select only one prompt; Shift-click to
 toggle a prompt without changing the others. All prompts are enabled initially.
@@ -393,7 +399,7 @@ remain unassessed unless a later retrospective includes them.
 
 ### Attempted capabilities
 
-Open `/capabilities` or choose **Capabilities** in the header for a simple table
+Open `/capabilities` or choose the **Capabilities** tab for a simple table
 of technical capabilities, tool calls, and results. Session tabs select the recording
 to inspect. Invocations are grouped under their capability, with one result per
 call. Groups with failures appear first, and failed invocations appear first

@@ -68,12 +68,87 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test.each(["", "?session=s1&keep=yes"])("main page links to reasons and capabilities while preserving query parameters: %s", (search) => {
+test.each(["", "?session=s1&keep=yes"])("shows all three view tabs while preserving query parameters: %s", (search) => {
   window.history.replaceState(null, "", `/${search}`);
   render(<App />);
-  const navigation = within(screen.getByRole("navigation", { name: "Page navigation" }));
-  expect(navigation.getByRole("link", { name: "Reasons" }).getAttribute("href")).toBe(`/reason${search}`);
-  expect(navigation.getByRole("link", { name: "Capabilities" }).getAttribute("href")).toBe(`/capabilities${search}`);
+  const navigation = within(screen.getByRole("tablist", { name: "Views" }));
+  expect(navigation.getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["Activity map", "Capabilities", "Reasons"]);
+  expect(navigation.getByRole("tab", { name: "Activity map", selected: true }).getAttribute("href")).toBe(`/${search}`);
+  expect(navigation.getByRole("tab", { name: "Reasons", selected: false }).getAttribute("href")).toBe(`/reason${search}`);
+  expect(navigation.getByRole("tab", { name: "Capabilities", selected: false }).getAttribute("href")).toBe(`/capabilities${search}`);
+});
+
+test("view tabs switch content in place and preserve session selection and history", async () => {
+  window.history.replaceState(null, "", "/?session=s1&keep=yes");
+  const user = userEvent.setup();
+  render(<App />);
+  const navigation = within(screen.getByRole("tablist", { name: "Views" }));
+  const expectView = (name: string, path: string) => {
+    const active = navigation.getByRole("tab", { name, selected: true });
+    expect(navigation.getAllByRole("tab", { selected: true })).toHaveLength(1);
+    expect(screen.getByRole("tabpanel", { name }).id).toBe(active.getAttribute("aria-controls"));
+    expect(window.location.pathname).toBe(path);
+    expect(window.location.search).toBe("?session=s1&keep=yes");
+    expect(screen.getByRole("tab", { name: "First session" }).getAttribute("aria-selected")).toBe("true");
+  };
+  expectView("Activity map", "/");
+  await user.click(navigation.getByRole("tab", { name: "Capabilities" }));
+  expectView("Capabilities", "/capabilities");
+  expect(screen.getByRole("table", { name: "Attempted capabilities" })).toBeTruthy();
+  expect(screen.queryByRole("region", { name: "File activity heatmap" })).toBeNull();
+  expect(screen.queryByRole("table", { name: "File access reasons" })).toBeNull();
+  expect(screen.queryByRole("slider")).toBeNull();
+  await user.click(navigation.getByRole("tab", { name: "Reasons" }));
+  expectView("Reasons", "/reason");
+  expect(screen.getByRole("table", { name: "File access reasons" })).toBeTruthy();
+  expect(screen.queryByRole("table", { name: "Attempted capabilities" })).toBeNull();
+  await user.click(navigation.getByRole("tab", { name: "Activity map" }));
+  expectView("Activity map", "/");
+  expect(screen.getByRole("region", { name: "File activity heatmap" })).toBeTruthy();
+  expect(screen.getByRole("slider", { name: "Scrub to event" })).toBeTruthy();
+  const pushState = vi.spyOn(window.history, "pushState");
+  await user.click(navigation.getByRole("tab", { name: "Activity map" }));
+  expect(pushState).not.toHaveBeenCalled();
+  act(() => {
+    window.history.replaceState(null, "", "/capabilities?session=s1&keep=yes");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  expectView("Capabilities", "/capabilities");
+  act(() => {
+    window.history.replaceState(null, "", "/reason?session=s1&keep=yes");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  expectView("Reasons", "/reason");
+});
+
+test("view tabs support arrow keys, Home, End, Space and a single tab stop", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  const navigation = within(screen.getByRole("tablist", { name: "Views" }));
+  const expectActive = (name: string) => {
+    const tab = navigation.getByRole("tab", { name, selected: true });
+    expect(document.activeElement).toBe(tab);
+    expect(navigation.getAllByRole("tab").map((item) => item.tabIndex)).toEqual(
+      navigation.getAllByRole("tab").map((item) => item === tab ? 0 : -1),
+    );
+  };
+  navigation.getByRole("tab", { name: "Activity map" }).focus();
+  await user.keyboard("{ArrowRight}");
+  expectActive("Capabilities");
+  await user.keyboard("{ArrowRight}");
+  expectActive("Reasons");
+  await user.keyboard("{ArrowRight}");
+  expectActive("Activity map");
+  await user.keyboard("{ArrowLeft}");
+  expectActive("Reasons");
+  await user.keyboard("{Home}");
+  expectActive("Activity map");
+  await user.keyboard("{End}");
+  expectActive("Reasons");
+  await user.keyboard(" ");
+  expectActive("Reasons");
+  await user.keyboard("{ArrowLeft}{Enter}");
+  expectActive("Capabilities");
 });
 
 test("/reason shows the simple reason table, prompt toggles and file search, with session selection", async () => {
@@ -125,8 +200,8 @@ test("/capabilities shows only the capability table and keeps session selection 
   expect(screen.queryByRole("button", { name: /event stream/ })).toBeNull();
   expect(screen.queryByRole("slider")).toBeNull();
   expect(screen.queryByRole("complementary")).toBeNull();
-  expect(screen.getByRole("link", { name: "Reasons" }).getAttribute("href")).toBe("/reason?session=s1&keep=yes");
-  expect(screen.getByRole("link", { name: "Activity map" }).getAttribute("href")).toBe("/?session=s1&keep=yes");
+  expect(screen.getByRole("tab", { name: "Reasons" }).getAttribute("href")).toBe("/reason?session=s1&keep=yes");
+  expect(screen.getByRole("tab", { name: "Activity map" }).getAttribute("href")).toBe("/?session=s1&keep=yes");
   await user.click(screen.getByRole("tab", { name: /Second session/ }));
   expect(window.location.pathname).toBe("/capabilities");
   expect(window.location.search).toBe("?session=s2&keep=yes");
@@ -169,7 +244,7 @@ test.each(["/reason", "/capabilities"])("%s supports exclusive clicks and indepe
   expect(rows()).toHaveLength(2);
   expect(new URL(window.location.href).searchParams.getAll("session")).toEqual(["s1", "s2"]);
   expect(new URL(window.location.href).searchParams.get("keep")).toBe("yes");
-  expect(screen.getByRole("link", { name: path === "/reason" ? "Capabilities" : "Reasons" }).getAttribute("href")).toContain("session=s1&session=s2");
+  expect(screen.getByRole("tab", { name: path === "/reason" ? "Capabilities" : "Reasons" }).getAttribute("href")).toContain("session=s1&session=s2");
   fireEvent.click(first);
   expect(choices()).toEqual(["true", "false", "false"]);
   fireEvent.click(first, { shiftKey: true });
@@ -374,7 +449,7 @@ test("keeps session tabs in the header and scopes the heatmap and related event 
   } : event);
   render(<App />);
   const heatmap = () => within(screen.getByRole("table", { name: "File operations by prompt" }));
-  expect(screen.getByRole("tablist").closest("header")).toBeTruthy();
+  expect(screen.getByRole("tablist", { name: "Sessions" }).closest("header")).toBeTruthy();
   expect(heatmap().getByText("file4.ts")).toBeTruthy();
   await user.click(screen.getByRole("tab", { name: /First session/ }));
   expect(heatmap().getByText("file1.ts")).toBeTruthy();

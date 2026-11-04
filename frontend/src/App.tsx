@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { FileActivity } from "./FileActivity";
 import { Icon } from "./Icon";
 import { SessionTabs } from "./SessionTabs";
@@ -10,6 +10,12 @@ import { Timeline } from "./Timeline";
 import { collectActivity, collectHeatmapActivity } from "./file-activity-model";
 import { ReasonMap } from "./ReasonMap";
 import { Capabilities } from "./Capabilities";
+
+const views = [
+  { key: "activity", path: "/", title: "Activity map" },
+  { key: "capabilities", path: "/capabilities", title: "Capabilities" },
+  { key: "reason", path: "/reason", title: "Reasons" },
+] as const;
 
 const sessionsFromURL = () => {
   const params = new URL(window.location.href).searchParams;
@@ -112,6 +118,33 @@ export function App() {
     resumeLive();
   };
 
+  const selectView = (view: typeof views[number]) => {
+    if (view.key === page) return;
+    const url = new URL(window.location.href);
+    url.pathname = view.path;
+    window.history.pushState(null, "", url);
+    setPathname(view.path);
+    setHighlightedEventIDs(new Set());
+    resumeLive();
+  };
+
+  const navigateViews = (event: KeyboardEvent<HTMLElement>) => {
+    const target = event.target;
+    if (!(target instanceof HTMLAnchorElement)) return;
+    const index = views.findIndex((view) => view.key === target.dataset.view);
+    if (index < 0) return;
+    let next: number;
+    if (event.key === "ArrowRight") next = (index + 1) % views.length;
+    else if (event.key === "ArrowLeft") next = (index + views.length - 1) % views.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = views.length - 1;
+    else if (event.key === " ") next = index;
+    else return;
+    event.preventDefault();
+    selectView(views[next]);
+    event.currentTarget.querySelector<HTMLAnchorElement>(`#view-tab-${views[next].key}`)?.focus({ preventScroll: true });
+  };
+
   return (
     <div className="viewer-app group/app min-w-0" data-connection={status} data-page={page}>
       <header className="viewer-header">
@@ -121,14 +154,20 @@ export function App() {
         </div>
         <SessionTabs sessions={sessions} selected={selected} selectedSessions={simplePage ? selectedSessions : undefined} onSelect={selectSession} />
         <div className="flex items-center gap-2.5 max-[760px]:col-start-2 max-[760px]:row-start-1 max-[760px]:gap-2">
-          <nav aria-label="Page navigation" className="flex items-center gap-2">
-            {([["activity", "/", "Activity map"], ["reason", "/reason", "Reasons"], ["capabilities", "/capabilities", "Capabilities"]] as const).filter(([key]) => key !== page).map(([key, path, title]) =>
-              <a key={key} className="rounded-md border border-line px-2 py-1 text-[11px] whitespace-nowrap text-muted hover:border-accent hover:text-ink" href={`${path}${window.location.search}`}>{title}</a>)}
-          </nav>
           <div className="inline-flex items-center gap-2 justify-self-end rounded-[20px] border border-[#d5ac6d24] bg-[#d5ac6d08] px-[9px] py-1 text-[11px] whitespace-nowrap text-[#d5ac6d] group-data-[connection=live]/app:border-[#86cfa124] group-data-[connection=live]/app:bg-[#86cfa108] group-data-[connection=live]/app:text-[#a6d9b8] max-[760px]:px-2 max-[760px]:text-[10px]" role="status"><StatusDot /><span className="max-[480px]:sr-only">{status === "live" ? "Live stream" : status === "connecting" ? "Connecting" : "Reconnecting"}</span></div>
         </div>
       </header>
       <main className="viewer-main">
+        <nav className="viewer-view-tabs" role="tablist" aria-label="Views" aria-orientation="horizontal" onKeyDown={navigateViews}>
+          {views.map((view) => <a key={view.key} id={`view-tab-${view.key}`} role="tab" data-view={view.key}
+            aria-selected={view.key === page} aria-controls="view-workspace" tabIndex={view.key === page ? 0 : -1}
+            href={`${view.path}${window.location.search}`} onClick={(event) => {
+              if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+              event.preventDefault();
+              selectView(view);
+            }}>{view.title}</a>)}
+        </nav>
+        <div className="viewer-view-panel" id="view-workspace" role="tabpanel" aria-labelledby={`view-tab-${page}`}>
         {error && <p role="alert" className="viewer-error">{error}</p>}
         {!simplePage && permissions.length > 0 && <div className="max-h-[35dvh] shrink-0 overflow-auto px-7 pt-4 [&>.read-approvals]:mb-0 max-[760px]:px-3">
           <PermissionRequests requests={permissions} sessions={sessions} live={status === "live"} onReply={replyPermission} />
@@ -136,6 +175,7 @@ export function App() {
         {reasonsPage ? <ReasonMap key={selectionKey} events={simpleEvents} sessions={sessions} selectedSession={selected} sessionLabel={sessionLabel} />
           : capabilitiesPage ? <Capabilities key={selectionKey} events={simpleEvents} sessions={sessions} selectedSession={selected} sessionLabel={sessionLabel} />
           : <FileActivity events={events} sessions={sessions} selectedSession={selected} activityPrompts={activityPrompts} activeEventID={activeEventID} cutoffEventID={cutoffEventID} jumpRequest={jumpRequest} onPromptNavigate={navigatePrompt} onFileEventsChange={setHighlightedEventIDs} />}
+        </div>
       </main>
       {!simplePage && <footer className="viewer-timeline min-w-0 border-t border-line bg-frame" aria-label="Bottom bar"><Timeline events={timelineEvents} evidenceEvents={events} prompts={prompts} activeEventID={activeEventID} centerRequest={promptJump} highlightedEventIDs={highlightedEventIDs} onSelect={scrubToEvent} onActivate={inspectEvent} followingLive={followingLive} onToggleLive={toggleLive} /></footer>}
       {!simplePage && <ReadWarning requests={permissions} live={status === "live"} />}
