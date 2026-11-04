@@ -23,7 +23,9 @@ export default Plugin.define({
     let explanations: Awaited<ReturnType<typeof registerLiveToolExplanations>> | undefined;
     try {
       await permissions.start();
-      if (ctx.options.liveToolExplanations === true) explanations = await registerLiveToolExplanations(ctx, recorder);
+      if (ctx.options.liveToolExplanations === undefined || ctx.options.liveToolExplanations === true) {
+        explanations = await registerLiveToolExplanations(ctx, recorder);
+      }
       await registerRetro(ctx);
       const stopRecording = registerEvents({
         context: ctx,

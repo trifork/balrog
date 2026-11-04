@@ -737,14 +737,14 @@ The source is `skills/retro/SKILL.md`; its portable Node helper is
 bundled skill. Other compatible harnesses can load the same skill directory;
 they must supply a current OpenCode session ID or ask for one when unavailable.
 
-### Passive recording and low-cost live explanations
+### Low-cost live explanations and passive recording
 
-By default, the V2 recorder subscribes to native session events without changing
-tool schemas, arguments, results, or model instructions. Reasons and outcomes
-remain empty until `/retro` supplies assessments or explicit annotations arrive.
+The V2 recorder subscribes to native session events and enables low-cost live
+explanations by default. Set `liveToolExplanations` to `false` for passive recording
+without changing tool schemas, arguments, results, or model instructions.
 The sensitive-file permission integration is unchanged.
 
-To enable live explanations, set the boolean `liveToolExplanations` option:
+To disable live explanations, set the boolean `liveToolExplanations` option:
 
 ```jsonc
 {
@@ -753,7 +753,7 @@ To enable live explanations, set the boolean `liveToolExplanations` option:
     {
       "package": "/absolute/path/to/balrog/plugin/v2",
       "options": {
-        "liveToolExplanations": true
+        "liveToolExplanations": false
       }
     }
   ]
@@ -764,7 +764,7 @@ Merge this option into your existing plugin entry. V2 reloads config changes
 automatically; `/reload` forces a reload. Restart the Balrog viewer after updating
 its code.
 
-In this mode, compatible tools gain one optional `__balrogReason` input field
+With live explanations enabled, compatible tools gain one optional `__balrogReason` input field
 asking for a short purpose, not private reasoning. The plugin removes that field
 before execution and preserves the original tool's validation and decoding.
 Purposes are best-effort: missing explanations do not fail tools, inject reminders,
