@@ -290,8 +290,8 @@ the inspector without a selected prompt. The selected column is outlined, with
 lighter cell backgrounds that preserve heat levels and reverted markers.
 Choose **All prompts** to close the inspector and restore the session overview.
 Switching sessions also clears the prompt selection and closes the inspector.
-The map has no candle-selector row. Each column has a plain **Prompt 1**,
-**Prompt 2**, etc. heading that stays visible while scrolling; hover the heading
+The map has no candle-selector row. Each column has a plain **Prompt 01**,
+**Prompt 02**, etc. heading that stays visible while scrolling; hover the heading
 for the recorded prompt text. Titles share the top file-group row rather than
 adding a separate header row. Select a cell, not a heading, to open details.
 File/prompt counts stay beside the Activity map title at all screen sizes.

@@ -107,7 +107,7 @@ export function FileHeatmap({ prompts, paths, mode, selectedKey, selectedFile, s
                   <th scope="rowgroup"><span className="heatmap-scope-label">{group.label}<small>{group.paths.length} {group.paths.length === 1 ? "file" : "files"}</small></span></th>
                   {prompts.map((prompt, column) => groupIndex === 0
                     ? <th key={prompt.key} scope="col" className="heatmap-prompt-title" title={prompt.activity.text}
-                      aria-label={`Prompt ${column + 1}: ${prompt.activity.text}`} data-selected={prompt.key === selectedKey || undefined}>Prompt {column + 1}</th>
+                      aria-label={`Prompt ${promptNumber(column)}: ${prompt.activity.text}`} data-selected={prompt.key === selectedKey || undefined}>Prompt {promptNumber(column)}</th>
                     : <td key={prompt.key} data-selected={prompt.key === selectedKey || undefined} />)}
                 </tr>
                 {group.rows.map((row) => {

@@ -26,7 +26,7 @@ function message(id: number, activity: PromptActivity, ...updates: PromptActivit
 const inspector = () => within(screen.getByRole("complementary", { name: "Selected prompt and file" }));
 const matrix = () => within(screen.getByRole("table", { name: "File operations by prompt" }));
 const cell = (path: string, prompt = "01") => matrix().getByRole("button", { name: new RegExp(`^${path.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}, prompt ${prompt}:`) });
-const promptHeader = (number: string) => matrix().getByRole("columnheader", { name: new RegExp(`^Prompt ${Number(number)}:`) });
+const promptHeader = (number: string) => matrix().getByRole("columnheader", { name: new RegExp(`^Prompt ${number.padStart(2, "0")}:`) });
 const selectPrompt = async (user: ReturnType<typeof userEvent.setup>, number: string) => {
   await user.click(matrix().getAllByRole("button", { name: new RegExp(`, prompt ${number}:`) })[0]);
   await user.click(inspector().getByRole("button", { name: "Show all files for this prompt" }));
@@ -586,8 +586,8 @@ test("removes the candle selector while preserving the map header, file groups a
   expect(matrix().getByRole("rowgroup", { name: "In workspace" })).toBeTruthy();
   expect(document.querySelector(".heatmap thead")).toBeNull();
   expect(promptHeader("01").closest("tr")).toBe(matrix().getByRole("rowgroup", { name: "In workspace" }).firstElementChild);
-  expect(promptHeader("01").textContent).toBe("Prompt 1");
-  expect(promptHeader("02").textContent).toBe("Prompt 2");
+  expect(promptHeader("01").textContent).toBe("Prompt 01");
+  expect(promptHeader("02").textContent).toBe("Prompt 02");
   expect(promptHeader("01").title).toBe("Mixed changes");
   await user.click(promptHeader("01"));
   expect(screen.queryByRole("complementary")).toBeNull();

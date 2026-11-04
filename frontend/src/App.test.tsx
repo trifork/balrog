@@ -566,7 +566,7 @@ test("scrubbing reconstructs historical heatmap snapshots and Go live restores l
   rerender(<App />);
   expect(cell("app").getAttribute("data-heat")).toBe("1");
   expect(heatmap().queryByText("later.ts")).toBeNull();
-  expect(heatmap().queryByRole("columnheader", { name: /^Prompt 2:/ })).toBeNull();
+  expect(heatmap().queryByRole("columnheader", { name: /^Prompt 02:/ })).toBeNull();
   expect(screen.queryByRole("region", { name: "Session events" })).toBeNull();
   await user.click(screen.getByRole("button", { name: "All prompts" }));
   expect(cell("app").getAttribute("data-heat")).toBe("1");
@@ -574,7 +574,7 @@ test("scrubbing reconstructs historical heatmap snapshots and Go live restores l
   await user.click(screen.getByRole("button", { name: "Resume live playback" }));
   expect(cell("app").getAttribute("data-reverted")).toBe("true");
   expect(heatmap().getByText("later.ts")).toBeTruthy();
-  expect(heatmap().getByRole("columnheader", { name: /^Prompt 2:/ })).toBeTruthy();
+  expect(heatmap().getByRole("columnheader", { name: /^Prompt 02:/ })).toBeTruthy();
   expect(screen.queryByRole("region", { name: "Session events" })).toBeNull();
 });
 
