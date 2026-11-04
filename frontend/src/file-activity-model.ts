@@ -73,7 +73,8 @@ export function collectHeatmapActivity(heatmaps: SessionActivity[], selectedSess
     }
   }
   for (const prompt of retained.values()) prompt.files = groupTouches(prompt.activity.files);
-  return [...retained.values()].sort((a, b) => a.startEventID - b.startEventID);
+  return [...retained.values()].filter((prompt) => prompt.activity.text !== "Execution (prompt text unavailable)")
+    .sort((a, b) => a.startEventID - b.startEventID);
 }
 
 export function aggregateActivity(prompts: ActivityPrompt[]): ActivityPrompt | undefined {
